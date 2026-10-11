@@ -125,18 +125,21 @@ function renderCart() {
 }
 
 function statusLabel(status) {
-  return ({ pending: "受付済み", preparing: "調理中", ready: "できあがり", served: "提供済み" })[status] || status;
+  return ({ pending: "受付済み", preparing: "調理中", ready: "できあがり（カウンターへ）", served: "提供済み" })[status] || status;
 }
 
 function renderTableOrders(state = getState()) {
   const ownOrders = state.orders.filter((order) => order.table === table && !order.paid);
   const announcement = state.announcements.at(-1);
   const root = document.querySelector("#table-orders");
+  const readyBanner = ownOrders.some((order) => order.status === "ready")
+    ? `<div class="no-orders" style="background:#fff3cd;color:#664d03;font-size:1.2rem;font-weight:700;border:2px solid #e0a800">🍛 お料理ができあがりました。カウンターまでお越しください。</div>`
+    : "";
   if (announcement && Date.now() - new Date(announcement.createdAt).getTime() < 30_000) {
-    root.innerHTML = `<div class="no-orders" style="background:#e8f1eb;color:#254c3c;font-size:1.1rem;font-weight:700">${escapeHtml(announcement.message)}</div>` + (ownOrders.length ? ownOrders.map(orderCard).join("") : "");
+    root.innerHTML = readyBanner + `<div class="no-orders" style="background:#e8f1eb;color:#254c3c;font-size:1.1rem;font-weight:700">${escapeHtml(announcement.message)}</div>` + (ownOrders.length ? ownOrders.map(orderCard).join("") : "");
     return;
   }
-  root.innerHTML = ownOrders.length ? ownOrders.map(orderCard).join("") : `<div class="no-orders">まだご注文はありません。メニューを選んでご注文ください。</div>`;
+  root.innerHTML = ownOrders.length ? readyBanner + ownOrders.map(orderCard).join("") : `<div class="no-orders">まだご注文はありません。メニューを選んでご注文ください。</div>`;
 }
 
 function orderCard(order) {
