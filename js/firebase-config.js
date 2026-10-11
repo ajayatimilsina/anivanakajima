@@ -8,5 +8,6 @@ export const firebaseConfig = {
   appId: "1:308884440439:web:c464ea26859d24988c0d72"
 };
 
+export const STAFF_PIN = "1234";
 export const STATE_PATH = "ajimaru/state";
 export const FIREBASE_SDK_VERSION = "10.12.2";

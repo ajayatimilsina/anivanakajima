@@ -178,9 +178,33 @@ export function isOrderable(item) {
   return item.available && item.stock > 0;
 }
 
+const PIN_SESSION_KEY = "ajimaru-staff-unlocked";
+
+function requireStaffPin() {
+  if (sessionStorage.getItem(PIN_SESSION_KEY) === "1") return;
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;z-index:3000;background:#2b1d16;display:flex;align-items:center;justify-content:center";
+  overlay.innerHTML = `<form style="background:#fff;padding:28px;border-radius:16px;text-align:center;width:min(320px,90vw)"><h2 style="font-size:20px">スタッフ PIN</h2><input type="password" inputmode="numeric" autocomplete="off" autofocus style="width:100%;font-size:28px;text-align:center;letter-spacing:8px;margin:12px 0;padding:8px"><div class="pin-error" style="color:#b94a3e;min-height:22px"></div><button type="submit" class="btn btn-dark w-100">開く</button></form>`;
+  document.body.append(overlay);
+  const input = overlay.querySelector("input");
+  input.focus();
+  overlay.querySelector("form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const { STAFF_PIN } = await import("./firebase-config.js");
+    if (input.value === STAFF_PIN) {
+      sessionStorage.setItem(PIN_SESSION_KEY, "1");
+      overlay.remove();
+    } else {
+      overlay.querySelector(".pin-error").textContent = "PINが違います";
+      input.value = "";
+    }
+  });
+}
+
 export function renderStaffShell(activePage) {
   const root = document.querySelector("#staff-root");
   if (!root) return;
+  requireStaffPin();
   const links = [
     ["kitchen.html", "キッチン", "kitchen"],
     ["register.html", "レジ・会計", "register"],
@@ -189,7 +213,7 @@ export function renderStaffShell(activePage) {
     ["finance.html", "収支管理", "finance"],
     ["tables-1-to-40-qr.html", "テーブルQR", "qr"]
   ];
-  root.innerHTML = `<aside class="staff-nav"><a class="brand" href="index.html"><span class="brand-mark">あ</span><span>ajimaru<small>STAFF CONSOLE</small></span></a><div class="nav-label">OPERATIONS</div><nav class="staff-links">${links.map(([href, label, key]) => `<a href="${href}" class="${key === activePage ? "active" : ""}">${label}</a>`).join("")}</nav><div class="nav-footer">QR ORDER + POS<br>ローカルデモ / 同じ端末のタブ間同期</div></aside>`;
+  root.innerHTML = `<aside class="staff-nav"><a class="brand" href="index.html"><span class="brand-mark">あ</span><span>ajimaru<small>STAFF CONSOLE</small></span></a><div class="nav-label">OPERATIONS</div><nav class="staff-links">${links.map(([href, label, key]) => `<a href="${href}" class="${key === activePage ? "active" : ""}">${label}</a>`).join("")}</nav><div class="nav-footer">QR ORDER + POS<br>${syncMode === "firebase" ? "Firebase リアルタイム同期" : "ローカルのみ（同期オフ）"}</div></aside>`;
 }
 
 export function todayDateInput(input) {
