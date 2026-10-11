@@ -30,7 +30,20 @@ function render(state = getState()) {
   const orders = state.orders.filter((order) => !order.paid && order.status !== "served");
   const calls = state.calls.filter((call) => !call.resolved);
   document.querySelector("#kds-count").textContent = `${orders.length} 件の注文${calls.length ? ` ・ 📣 呼び出し ${calls.length} 件` : ""}`;
-  root.innerHTML = orders.length ? orders.map((order) => `<article class="kitchen-ticket ${order.status}"><div class="ticket-top"><div><h2>テーブル ${order.table}</h2><span class="ticket-time">${formatTime(order.createdAt)} ・ ${escapeHtml({ pending: "受付", preparing: "調理中", ready: "できあがり" }[order.status] || order.status)}</span></div><button class="btn btn-sm btn-outline-dark print-ticket" data-print="${escapeHtml(order.id)}">印刷</button></div><div class="ticket-items">${order.items.map((item) => `<div class="ticket-item"><div><strong>${escapeHtml(item.name)}</strong>${item.optionLabel ? `<span class="ticket-note">${escapeHtml(item.optionLabel)}</span>` : ""}</div><strong>× ${item.quantity}</strong></div>`).join("")}${order.note ? `<p class="ticket-note mt-2 mb-0">メモ: ${escapeHtml(order.note)}</p>` : ""}</div><div class="ticket-actions">${order.status === "pending" ? `<button class="btn btn-primary" data-status="preparing" data-id="${escapeHtml(order.id)}">調理開始</button>` : ""}${order.status === "preparing" ? `<button class="btn btn-primary" data-status="ready" data-id="${escapeHtml(order.id)}">できあがり</button>` : ""}${order.status === "ready" ? `<button class="btn btn-success" data-status="served" data-id="${escapeHtml(order.id)}">提供済みにする</button>` : ""}</div></article>`).join("") : `<div class="no-orders">キッチンに注文はありません。</div>`;
+  root.innerHTML = orders.length ? orders.map((order) => `<article class="kitchen-ticket ${order.status}"><div class="ticket-top"><div><h2>テーブル ${order.table}</h2><span class="ticket-time">${formatTime(order.createdAt)} ・ ${escapeHtml({ pending: "受付", preparing: "調理中", ready: "できあがり" }[order.status] || order.status)}</span></div><button class="btn btn-sm btn-outline-dark print-ticket" data-print="${escapeHtml(order.id)}">印刷</button></div><div class="ticket-items">${order.items.map((item) => `<div class="ticket-item"><div><strong>${escapeHtml(item.name)}</strong>${item.optionLabel ? `<span class="ticket-note">${escapeHtml(item.optionLabel)}</span>` : ""}</div><strong>× ${item.quantity}</strong></div>`).join("")}${order.note ? `<p class="ticket-note mt-2 mb-0">メモ: ${escapeHtml(order.note)}</p>` : ""}</div><div class="ticket-actions">${order.status === "pending" ? `<button class="btn btn-primary" data-status="preparing" data-id="${escapeHtml(order.id)}">調理開始</button>` : ""}${order.status === "preparing" ? `<button class="btn btn-primary" data-status="ready" data-id="${escapeHtml(order.id)}">できあがり</button>` : ""}${order.status === "ready" ? `<button class="btn btn-success" data-status="served" data-id="${escapeHtml(order.id)}">提供済みにする</button>` : ""}<button class="btn btn-warning" data-call-order="${escapeHtml(order.id)}">📣 お客様を呼ぶ（声）</button></div></article>`).join("") : `<div class="no-orders">キッチンに注文はありません。</div>`;
+  root.querySelectorAll("[data-call-order]").forEach((button) => button.addEventListener("click", () => {
+    const order = getState().orders.find((entry) => entry.id === button.dataset.callOrder);
+    if (!order) return;
+    updateState((current) => current.announcements.push({
+      id: makeId("announcement"),
+      table: order.table,
+      orderId: order.id,
+      message: `料理が完了しました。カウンターまでお越しください。よろしくお願いいたします。注文 #${Date.parse(order.createdAt)}`,
+      createdAt: new Date().toISOString()
+    }));
+    button.textContent = "✅ 呼び出しました";
+    setTimeout(() => { button.textContent = "📣 お客様を呼ぶ（声）"; }, 2500);
+  }));
   root.querySelectorAll("[data-status]").forEach((button) => button.addEventListener("click", () => {
     updateState((current) => {
       const order = current.orders.find((entry) => entry.id === button.dataset.id);

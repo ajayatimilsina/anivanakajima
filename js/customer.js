@@ -130,7 +130,7 @@ function statusLabel(status) {
 
 function renderTableOrders(state = getState()) {
   const ownOrders = state.orders.filter((order) => order.table === table && !order.paid);
-  const announcement = state.announcements.at(-1);
+  const announcement = state.announcements.filter((entry) => !entry.table || entry.table === table).at(-1);
   const root = document.querySelector("#table-orders");
   const readyBanner = ownOrders.some((order) => order.status === "ready")
     ? `<div class="no-orders" style="background:#fff3cd;color:#664d03;font-size:1.2rem;font-weight:700;border:2px solid #e0a800">🍛 お料理ができあがりました。カウンターまでお越しください。</div>`
@@ -155,20 +155,31 @@ function orderCard(order) {
   return `<article class="order-status-card"><div class="d-flex justify-content-between gap-2"><h3>${formatTime(order.createdAt)} のご注文 <small>#${orderNumber(order)}</small></h3><span class="badge text-bg-light">${statusLabel(order.status)}</span></div>${ready}<p>${order.items.map((item) => `${escapeHtml(item.name)} × ${item.quantity}`).join("、")}</p><strong>${money(order.subtotal)}</strong></article>`;
 }
 
-let knownStatuses = null;
-function announceReadyOrders(state) {
-  const own = state.orders.filter((order) => order.table === table);
-  if (knownStatuses && "speechSynthesis" in window) {
-    for (const order of own) {
-      if (order.status === "ready" && knownStatuses[order.id] !== "ready") {
-        const utterance = new SpeechSynthesisUtterance(readyMessage(order).replace("#", "番号 "));
-        utterance.lang = "ja-JP";
-        window.speechSynthesis.speak(utterance);
-      }
-    }
-  }
-  knownStatuses = Object.fromEntries(own.map((order) => [order.id, order.status]));
+let knownAnnouncementIds = null;
+function speakText(text) {
+  if (!("speechSynthesis" in window)) return;
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "ja-JP";
+  window.speechSynthesis.speak(utterance);
 }
+
+function announceReadyOrders(state) {
+  const targeted = state.announcements.filter((entry) => entry.table === table);
+  if (knownAnnouncementIds) {
+    targeted.filter((entry) => !knownAnnouncementIds.has(entry.id) && Date.now() - new Date(entry.createdAt).getTime() < 60_000)
+      .forEach((entry) => speakText(entry.message.replace("#", "番号 ")));
+  }
+  knownAnnouncementIds = new Set(targeted.map((entry) => entry.id));
+}
+
+const voiceButton = document.createElement("button");
+voiceButton.className = "btn btn-outline-dark btn-sm mb-2";
+voiceButton.textContent = "🔊 音声のお知らせをオンにする";
+voiceButton.addEventListener("click", () => {
+  speakText("音声のお知らせをオンにしました。");
+  voiceButton.textContent = "🔊 音声のお知らせ：オン";
+});
+document.querySelector("#table-orders").before(voiceButton);
 
 document.querySelector("#categories").addEventListener("click", (event) => {
   const button = event.target.closest("[data-category]");
