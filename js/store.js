@@ -20,7 +20,67 @@ function initialState() {
   };
 }
 
+export let syncMode = "local";
+let cache = null;
+let remoteRef = null;
+let runRemoteTransaction = null;
+
+function normalizeState(raw) {
+  const state = raw && typeof raw === "object" ? raw : initialState();
+  for (const key of ["menu", "orders", "payments", "expenses", "calls", "announcements", "printedKitchenOrderIds"]) {
+    state[key] = Array.isArray(state[key]) ? state[key].filter(Boolean) : Object.values(state[key] || {});
+  }
+  if (Array.isArray(state.receipts)) {
+    state.receipts = Object.fromEntries(state.receipts.map((value, index) => [index, value]).filter(([, value]) => value));
+  }
+  state.receipts ||= {};
+  state.settings = { paperWidth: "80", sound: false, kitchenAutoPrint: true, ...(state.settings || {}) };
+  state.version = 1;
+  state.menu.forEach((item) => { item.options = Array.isArray(item.options) ? item.options : []; });
+  const fixLines = (lines) => (Array.isArray(lines) ? lines : Object.values(lines || {})).map((line) => ({ ...line, options: Array.isArray(line.options) ? line.options : [] }));
+  state.orders.forEach((order) => { order.items = fixLines(order.items); });
+  state.payments.forEach((payment) => { payment.items = fixLines(payment.items); payment.orders = Array.isArray(payment.orders) ? payment.orders : []; });
+  return state;
+}
+
+async function connectRemote() {
+  const { firebaseConfig, STATE_PATH, FIREBASE_SDK_VERSION } = await import("./firebase-config.js");
+  const base = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}`;
+  const [{ initializeApp }, { getAuth, signInAnonymously }, db] = await Promise.all([
+    import(`${base}/firebase-app.js`), import(`${base}/firebase-auth.js`), import(`${base}/firebase-database.js`)
+  ]);
+  const app = initializeApp(firebaseConfig);
+  await signInAnonymously(getAuth(app));
+  const ref = db.ref(db.getDatabase(app), STATE_PATH);
+  const first = await Promise.race([
+    db.get(ref),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("Firebase connection timed out.")), 8000))
+  ]);
+  if (!first.exists()) {
+    await db.runTransaction(ref, (current) => JSON.parse(JSON.stringify(normalizeState(current ?? initialState()))));
+  }
+  remoteRef = ref;
+  runRemoteTransaction = db.runTransaction;
+  db.onValue(ref, (snapshot) => {
+    cache = normalizeState(snapshot.val());
+    subscribers.forEach((listener) => listener(cache));
+  }, (error) => console.error("Firebase realtime listener stopped.", error));
+  cache = normalizeState((await db.get(ref)).val());
+  syncMode = "firebase";
+}
+
+try {
+  await connectRemote();
+} catch (error) {
+  console.warn("Firebase sync unavailable; using this browser only.", error);
+  const notice = document.createElement("div");
+  notice.textContent = "⚠ リアルタイム同期オフ（この端末のみ保存）";
+  notice.style.cssText = "position:fixed;left:8px;bottom:8px;z-index:2000;background:#b94a3e;color:#fff;padding:4px 10px;border-radius:8px;font-size:12px";
+  document.addEventListener("DOMContentLoaded", () => document.body.append(notice));
+}
+
 export function getState() {
+  if (syncMode === "firebase") return cache;
   const stored = localStorage.getItem(STORAGE_KEY);
   if (!stored) {
     const state = initialState();
@@ -40,6 +100,27 @@ export function getState() {
 }
 
 export function updateState(mutator) {
+  if (syncMode === "firebase") {
+    const draft = structuredClone(cache);
+    const result = mutator(draft);
+    cache = normalizeState(draft);
+    subscribers.forEach((listener) => listener(cache));
+    runRemoteTransaction(remoteRef, (current) => {
+      const serverState = normalizeState(current ?? initialState());
+      try {
+        mutator(serverState);
+      } catch (error) {
+        console.error("Update rejected by latest shared data.", error);
+        queueMicrotask(() => window.alert(error.message));
+        return;
+      }
+      return JSON.parse(JSON.stringify(serverState));
+    }).catch((error) => {
+      console.error("Could not save to Firebase.", error);
+      window.alert("共有データを保存できませんでした。通信状況を確認してください。");
+    });
+    return result;
+  }
   const state = getState();
   const result = mutator(state);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
