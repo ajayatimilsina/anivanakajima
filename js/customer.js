@@ -155,6 +155,33 @@ function orderCard(order) {
   return `<article class="order-status-card"><div class="d-flex justify-content-between gap-2"><h3>${formatTime(order.createdAt)} のご注文 <small>#${orderNumber(order)}</small></h3><span class="badge text-bg-light">${statusLabel(order.status)}</span></div>${ready}<p>${order.items.map((item) => `${escapeHtml(item.name)} × ${item.quantity}`).join("、")}</p><strong>${money(order.subtotal)}</strong></article>`;
 }
 
+const alertBox = document.createElement("div");
+alertBox.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2500;display:none;background:#ffc107;color:#3d2e00;padding:16px;font-size:1.15rem;font-weight:800;text-align:center;box-shadow:0 4px 14px #0004";
+alertBox.innerHTML = `<div class="alert-text"></div><button type="button" class="btn btn-dark btn-sm mt-2">OK</button>`;
+alertBox.querySelector("button").addEventListener("click", () => {
+  localStorage.setItem(`ajimaru-dismissed-${table}`, alertBox.dataset.key || "");
+  alertBox.style.display = "none";
+});
+document.body.append(alertBox);
+
+function updateAlertBanner(state) {
+  const readyOrder = state.orders.find((order) => order.table === table && !order.paid && order.status === "ready");
+  const call = state.announcements.filter((entry) => entry.table === table).at(-1);
+  const callFresh = call && Date.now() - new Date(call.createdAt).getTime() < 10 * 60_000;
+  const dismissed = localStorage.getItem(`ajimaru-dismissed-${table}`);
+  const candidates = [];
+  if (callFresh) candidates.push({ key: call.id, text: call.message });
+  if (readyOrder) candidates.push({ key: `ready-${readyOrder.id}`, text: readyMessage(readyOrder) });
+  const active = candidates.find((entry) => entry.key !== dismissed);
+  if (!active) {
+    alertBox.style.display = "none";
+    return;
+  }
+  alertBox.dataset.key = active.key;
+  alertBox.querySelector(".alert-text").textContent = "🍛 " + active.text;
+  alertBox.style.display = "block";
+}
+
 let knownAnnouncementIds = null;
 function speakText(text) {
   if (!("speechSynthesis" in window)) return;
@@ -164,6 +191,7 @@ function speakText(text) {
 }
 
 function announceReadyOrders(state) {
+  updateAlertBanner(state);
   const targeted = state.announcements.filter((entry) => entry.table === table);
   if (knownAnnouncementIds) {
     targeted.filter((entry) => !knownAnnouncementIds.has(entry.id) && Date.now() - new Date(entry.createdAt).getTime() < 60_000)
