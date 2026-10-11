@@ -61,8 +61,17 @@ function renderCalls(calls) {
   const container = document.createElement("section");
   container.id = "staff-calls";
   container.className = "panel-card mb-3";
-  container.innerHTML = `<strong>スタッフ呼び出し</strong><div class="d-flex flex-wrap gap-2 mt-2">${calls.map((call) => `<button class="btn btn-warning btn-sm" data-resolve-call="${escapeHtml(call.id)}">テーブル ${call.table} ・ ${formatTime(call.createdAt)}　対応済み</button>`).join("")}</div>`;
+  container.innerHTML = `<strong>スタッフ呼び出し</strong><div class="d-flex flex-column gap-2 mt-2">${calls.map((call) => `<div class="d-flex flex-wrap gap-2"><button class="btn btn-warning btn-sm" data-resolve-call="${escapeHtml(call.id)}">テーブル ${call.table} ・ ${formatTime(call.createdAt)}　対応済み</button><button class="btn btn-outline-dark btn-sm" data-voice-call="${call.table}">📣 カウンターへ呼ぶ（声）</button></div>`).join("")}</div>`;
   document.querySelector(".staff-content").insertBefore(container, document.querySelector(".kds-toolbar"));
+  container.querySelectorAll("[data-voice-call]").forEach((button) => button.addEventListener("click", () => {
+    updateState((state) => state.announcements.push({
+      id: makeId("announcement"),
+      table: Number(button.dataset.voiceCall),
+      message: "カウンターまでお越しください。よろしくお願いいたします。",
+      createdAt: new Date().toISOString()
+    }));
+    button.textContent = "✅ 呼び出しました";
+  }));
   container.querySelectorAll("[data-resolve-call]").forEach((button) => button.addEventListener("click", () => updateState((state) => {
     const call = state.calls.find((entry) => entry.id === button.dataset.resolveCall);
     if (call) call.resolved = true;
