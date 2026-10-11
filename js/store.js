@@ -50,7 +50,11 @@ async function connectRemote() {
     import(`${base}/firebase-app.js`), import(`${base}/firebase-auth.js`), import(`${base}/firebase-database.js`)
   ]);
   const app = initializeApp(firebaseConfig);
-  await signInAnonymously(getAuth(app));
+  try {
+    await signInAnonymously(getAuth(app));
+  } catch (error) {
+    console.warn("Anonymous auth unavailable; trying without auth.", error.code);
+  }
   const ref = db.ref(db.getDatabase(app), STATE_PATH);
   const first = await Promise.race([
     db.get(ref),
@@ -76,7 +80,8 @@ try {
   const notice = document.createElement("div");
   notice.textContent = "⚠ リアルタイム同期オフ（この端末のみ保存）";
   notice.style.cssText = "position:fixed;left:8px;bottom:8px;z-index:2000;background:#b94a3e;color:#fff;padding:4px 10px;border-radius:8px;font-size:12px";
-  document.addEventListener("DOMContentLoaded", () => document.body.append(notice));
+  const showNotice = () => document.body.append(notice);
+  if (document.body) showNotice(); else document.addEventListener("DOMContentLoaded", showNotice);
 }
 
 export function getState() {
