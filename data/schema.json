@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ajimaru local POS demo state",
+  "type": "object",
+  "required": ["version", "menu", "orders", "payments", "expenses", "calls", "receipts", "announcements", "settings"],
+  "properties": {
+    "version": { "const": 1 },
+    "menu": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "category", "price", "stock", "available", "options"],
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "category": { "type": "string" },
+          "price": { "type": "integer", "minimum": 0 },
+          "stock": { "type": "integer", "minimum": 0 },
+          "available": { "type": "boolean" },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "choices"],
+              "properties": {
+                "name": { "type": "string" },
+                "choices": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["name", "price"],
+                    "properties": {
+                      "name": { "type": "string" },
+                      "price": { "type": "integer", "minimum": 0 }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "orders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "table", "createdAt", "status", "items", "subtotal"],
+        "properties": {
+          "id": { "type": "string" },
+          "table": { "type": "integer", "minimum": 1, "maximum": 40 },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "status": { "enum": ["pending", "preparing", "ready", "served"] },
+          "items": { "$ref": "#/$defs/orderItemList" },
+          "subtotal": { "type": "integer", "minimum": 0 },
+          "paid": { "type": "boolean" },
+          "paidAt": { "type": "string", "format": "date-time" },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "payments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "table", "paidAt", "subtotal", "discount", "total", "method", "receiptName", "orders", "items"],
+        "properties": {
+          "id": { "type": "string" },
+          "table": { "type": "integer", "minimum": 1, "maximum": 40 },
+          "paidAt": { "type": "string", "format": "date-time" },
+          "subtotal": { "type": "integer", "minimum": 0 },
+          "discount": { "type": "integer", "minimum": 0 },
+          "total": { "type": "integer", "minimum": 0 },
+          "method": { "enum": ["現金", "PayPay", "クレジット"] },
+          "receiptName": { "type": "string" },
+          "orders": { "type": "array", "items": { "type": "string" } },
+          "items": { "$ref": "#/$defs/orderItemList" }
+        }
+      }
+    },
+    "expenses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "category", "amount", "date", "createdAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "category": { "enum": ["経費", "人件費", "その他"] },
+          "amount": { "type": "integer", "minimum": 1 },
+          "date": { "type": "string", "format": "date" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "calls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "table", "createdAt", "resolved"],
+        "properties": {
+          "id": { "type": "string" },
+          "table": { "type": "integer", "minimum": 1, "maximum": 40 },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "resolved": { "type": "boolean" }
+        }
+      }
+    },
+    "receipts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "updatedAt"],
+        "properties": {
+          "name": { "type": "string" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "announcements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "message", "createdAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "message": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "printedKitchenOrderIds": { "type": "array", "items": { "type": "string" } },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "paperWidth": { "enum": ["58", "80"] },
+        "sound": { "type": "boolean" },
+        "kitchenAutoPrint": { "type": "boolean" }
+      }
+    }
+  },
+  "$defs": {
+    "orderItemList": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["itemId", "name", "category", "optionLabel", "options", "unitPrice", "quantity"],
+        "properties": {
+          "itemId": { "type": "integer" },
+          "name": { "type": "string" },
+          "category": { "type": "string" },
+          "optionLabel": { "type": "string" },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["group", "name", "price"],
+              "properties": {
+                "group": { "type": "string" },
+                "name": { "type": "string" },
+                "price": { "type": "integer", "minimum": 0 }
+              }
+            }
+          },
+          "unitPrice": { "type": "integer", "minimum": 0 },
+          "quantity": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  }
+}

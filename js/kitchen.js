@@ -1,0 +1,117 @@
+import { getState, updateState, subscribe, renderStaffShell, escapeHtml, money, formatTime, makeId, printDocument } from "./store.js";
+
+renderStaffShell("kitchen");
+const root = document.querySelector("#kitchen-orders");
+let soundEnabled = getState().settings.sound;
+let autoPrintEnabled = getState().settings.kitchenAutoPrint !== false;
+const knownOrderIds = new Set(getState().orders.map((order) => order.id));
+const soundToggle = document.querySelector("#sound-toggle");
+soundToggle.checked = soundEnabled;
+const autoPrintToggle = document.querySelector("#auto-print-toggle");
+autoPrintToggle.checked = autoPrintEnabled;
+
+function playTone() {
+  if (!soundEnabled) return;
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+  const context = new AudioContextClass();
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.frequency.value = 740;
+  gain.gain.value = 0.12;
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start();
+  oscillator.stop(context.currentTime + 0.18);
+  oscillator.onended = () => context.close();
+}
+
+function render(state = getState()) {
+  const orders = state.orders.filter((order) => !order.paid && order.status !== "served");
+  const calls = state.calls.filter((call) => !call.resolved);
+  document.querySelector("#kds-count").textContent = `${orders.length} 件の注文${calls.length ? ` ・ 📣 呼び出し ${calls.length} 件` : ""}`;
+  root.innerHTML = orders.length ? orders.map((order) => `<article class="kitchen-ticket ${order.status}"><div class="ticket-top"><div><h2>テーブル ${order.table}</h2><span class="ticket-time">${formatTime(order.createdAt)} ・ ${escapeHtml({ pending: "受付", preparing: "調理中", ready: "できあがり" }[order.status] || order.status)}</span></div><button class="btn btn-sm btn-outline-dark print-ticket" data-print="${escapeHtml(order.id)}">印刷</button></div><div class="ticket-items">${order.items.map((item) => `<div class="ticket-item"><div><strong>${escapeHtml(item.name)}</strong>${item.optionLabel ? `<span class="ticket-note">${escapeHtml(item.optionLabel)}</span>` : ""}</div><strong>× ${item.quantity}</strong></div>`).join("")}${order.note ? `<p class="ticket-note mt-2 mb-0">メモ: ${escapeHtml(order.note)}</p>` : ""}</div><div class="ticket-actions">${order.status === "pending" ? `<button class="btn btn-primary" data-status="preparing" data-id="${escapeHtml(order.id)}">調理開始</button>` : ""}${order.status === "preparing" ? `<button class="btn btn-primary" data-status="ready" data-id="${escapeHtml(order.id)}">できあがり</button>` : ""}${order.status === "ready" ? `<button class="btn btn-success" data-status="served" data-id="${escapeHtml(order.id)}">提供済みにする</button>` : ""}</div></article>`).join("") : `<div class="no-orders">キッチンに注文はありません。</div>`;
+  root.querySelectorAll("[data-status]").forEach((button) => button.addEventListener("click", () => {
+    updateState((current) => {
+      const order = current.orders.find((entry) => entry.id === button.dataset.id);
+      if (order) order.status = button.dataset.status;
+    });
+  }));
+  root.querySelectorAll("[data-print]").forEach((button) => button.addEventListener("click", () => printOrder(button.dataset.print)));
+  renderCalls(calls);
+}
+
+function renderCalls(calls) {
+  const old = document.querySelector("#staff-calls");
+  if (old) old.remove();
+  if (!calls.length) return;
+  const container = document.createElement("section");
+  container.id = "staff-calls";
+  container.className = "panel-card mb-3";
+  container.innerHTML = `<strong>スタッフ呼び出し</strong><div class="d-flex flex-wrap gap-2 mt-2">${calls.map((call) => `<button class="btn btn-warning btn-sm" data-resolve-call="${escapeHtml(call.id)}">テーブル ${call.table} ・ ${formatTime(call.createdAt)}　対応済み</button>`).join("")}</div>`;
+  document.querySelector(".staff-content").insertBefore(container, document.querySelector(".kds-toolbar"));
+  container.querySelectorAll("[data-resolve-call]").forEach((button) => button.addEventListener("click", () => updateState((state) => {
+    const call = state.calls.find((entry) => entry.id === button.dataset.resolveCall);
+    if (call) call.resolved = true;
+  })));
+}
+
+function printOrder(orderId) {
+  const order = getState().orders.find((entry) => entry.id === orderId);
+  if (!order) return;
+  document.documentElement.style.setProperty("--receipt-width", `${getState().settings.paperWidth || 80}mm`);
+  const printRoot = document.createElement("div");
+  printRoot.className = "print-only";
+  printRoot.innerHTML = order.items.flatMap((item) => Array.from({ length: item.quantity }, () => `<section class="kitchen-ticket print-ticket-page"><div class="ticket-top"><div><h2>テーブル ${order.table}</h2><span>${formatTime(order.createdAt)}</span></div></div><div class="ticket-items"><div class="ticket-item"><strong>${escapeHtml(item.name)}</strong>${item.optionLabel ? `<span class="ticket-note">${escapeHtml(item.optionLabel)}</span>` : ""}</div></div>${order.note ? `<p>メモ: ${escapeHtml(order.note)}</p>` : ""}</section>`)).join("");
+  document.body.append(printRoot);
+  printDocument();
+  printRoot.remove();
+}
+
+subscribe((state) => {
+  const newOrders = state.orders.filter((order) => !knownOrderIds.has(order.id));
+  newOrders.forEach((order) => knownOrderIds.add(order.id));
+  if (newOrders.length) {
+    playTone();
+    if (autoPrintEnabled) {
+      newOrders.forEach((order) => {
+        let shouldPrint = false;
+        updateState((current) => {
+          current.printedKitchenOrderIds ||= [];
+          if (!current.printedKitchenOrderIds.includes(order.id)) {
+            current.printedKitchenOrderIds.push(order.id);
+            shouldPrint = true;
+          }
+        });
+        if (shouldPrint) printOrder(order.id);
+      });
+    }
+  }
+  render(state);
+});
+render();
+document.querySelector("#enable-sound").addEventListener("click", async () => {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (AudioContextClass) {
+    const context = new AudioContextClass();
+    await context.resume();
+    await context.close();
+  }
+  soundEnabled = true;
+  soundToggle.checked = true;
+  updateState((state) => { state.settings.sound = true; });
+});
+soundToggle.addEventListener("change", () => {
+  soundEnabled = soundToggle.checked;
+  updateState((state) => { state.settings.sound = soundEnabled; });
+});
+autoPrintToggle.addEventListener("change", () => {
+  autoPrintEnabled = autoPrintToggle.checked;
+  updateState((state) => { state.settings.kitchenAutoPrint = autoPrintEnabled; });
+});
+document.querySelector("#announce-welcome").addEventListener("click", () => setAnnouncement("いらっしゃいませ。ごゆっくりお楽しみください。"));
+document.querySelector("#announce-thanks").addEventListener("click", () => setAnnouncement("ありがとうございました。またお越しください。"));
+function setAnnouncement(message) {
+  updateState((state) => state.announcements.push({ id: makeId("announcement"), message, createdAt: new Date().toISOString() }));
+  if ("speechSynthesis" in window) window.speechSynthesis.speak(new SpeechSynthesisUtterance(message));
+}

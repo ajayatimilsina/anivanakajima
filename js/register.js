@@ -1,0 +1,136 @@
+import { getState, updateState, subscribe, renderStaffShell, escapeHtml, money, makeId, formatTime, dateKey, todayDateInput, setPaperWidth, printDocument } from "./store.js";
+
+renderStaffShell("register");
+let selectedTable = 1;
+let activeTab = "checkout";
+const paperSelect = document.querySelector("#paper-width");
+paperSelect.value = getState().settings.paperWidth || "80";
+setPaperWidth(paperSelect.value);
+todayDateInput(document.querySelector("#daily-date"));
+todayDateInput(document.querySelector("#history-date"));
+
+function tableOrders(state, table) {
+  return state.orders.filter((order) => order.table === table && !order.paid);
+}
+
+function render(state = getState()) {
+  renderCalls(state);
+  renderTables(state);
+  renderCheckout(state);
+  renderDaily(state);
+  renderHistory(state);
+}
+
+function renderCalls(state) {
+  const calls = state.calls.filter((call) => !call.resolved);
+  const root = document.querySelector("#register-calls");
+  root.innerHTML = calls.length ? `<div class="panel-card"><strong>スタッフ呼び出し</strong><div class="d-flex flex-wrap gap-2 mt-2">${calls.map((call) => `<button class="btn btn-warning btn-sm" data-register-call="${escapeHtml(call.id)}">📣 テーブル ${call.table} ・ ${formatTime(call.createdAt)}　対応済み</button>`).join("")}</div></div>` : "";
+  root.querySelectorAll("[data-register-call]").forEach((button) => button.addEventListener("click", () => updateState((current) => {
+    const call = current.calls.find((entry) => entry.id === button.dataset.registerCall);
+    if (call) call.resolved = true;
+  })));
+}
+
+function renderTables(state) {
+  const root = document.querySelector("#table-picker");
+  root.innerHTML = Array.from({ length: 40 }, (_, index) => {
+    const table = index + 1;
+    const count = tableOrders(state, table).length;
+    const callCount = state.calls.filter((call) => call.table === table && !call.resolved).length;
+    return `<button class="table-select ${table === selectedTable ? "active" : ""}" data-table="${table}">${callCount ? "📣 " : ""}${table}<small>${count ? `${count}件` : "空席"}</small></button>`;
+  }).join("");
+  root.querySelectorAll("[data-table]").forEach((button) => button.addEventListener("click", () => {
+    selectedTable = Number(button.dataset.table);
+    render(getState());
+  }));
+}
+
+function renderCheckout(state) {
+  const root = document.querySelector("#checkout-detail");
+  const orders = tableOrders(state, selectedTable);
+  const receipt = state.receipts[selectedTable];
+  if (!orders.length) {
+    root.innerHTML = `<div class="checkout-empty"><div><div style="font-size:2rem">🧾</div><strong>テーブル ${selectedTable}</strong><p class="mb-0 mt-2">未会計の注文はありません。</p>${receipt ? `<small>領収書宛名: ${escapeHtml(receipt.name)}</small>` : ""}</div></div>`;
+    return;
+  }
+  const subtotal = orders.reduce((sum, order) => sum + order.subtotal, 0);
+  root.innerHTML = `<div class="panel-heading"><div><span class="eyebrow">CHECKOUT</span><h2>テーブル ${selectedTable}</h2></div><span class="badge text-bg-light">${orders.length}件の注文</span></div>${orders.map((order) => `<div class="checkout-line"><div><strong>${escapeHtml(order.items.map((item) => `${item.name} × ${item.quantity}`).join("、"))}</strong><small class="d-block muted">${formatTime(order.createdAt)} ・ ${escapeHtml({ pending: "受付済み", preparing: "調理中", ready: "できあがり", served: "提供済み" }[order.status] || order.status)}</small></div><strong>${money(order.subtotal)}</strong></div>`).join("")}<div class="discount-row"><span>割引</span><input id="discount-value" class="form-control" type="number" min="0" step="1" value="0"><select id="discount-mode" class="form-select" style="max-width:95px"><option value="yen">円</option><option value="percent">%</option></select><span class="muted">合計から値引き</span></div><div class="total-row"><span>お会計</span><strong id="checkout-total">${money(subtotal)}</strong></div><div class="payment-row"><select id="payment-method" class="form-select"><option value="現金">現金</option><option value="PayPay">PayPay</option><option value="クレジット">クレジット</option></select><button id="complete-payment" class="btn btn-primary">会計を完了</button></div>${receipt ? `<p class="feedback mt-3 mb-0">領収書宛名: ${escapeHtml(receipt.name)}</p>` : ""}`;
+  const discountValue = root.querySelector("#discount-value");
+  const discountMode = root.querySelector("#discount-mode");
+  const calculate = () => {
+    const raw = Math.max(0, Number(discountValue.value) || 0);
+    const discount = Math.min(subtotal, discountMode.value === "percent" ? Math.floor(subtotal * Math.min(raw, 100) / 100) : Math.floor(raw));
+    root.querySelector("#checkout-total").textContent = money(subtotal - discount);
+    return discount;
+  };
+  discountValue.addEventListener("input", calculate);
+  discountMode.addEventListener("change", calculate);
+  root.querySelector("#complete-payment").addEventListener("click", () => {
+    const discount = calculate();
+    const method = root.querySelector("#payment-method").value;
+    const paidAt = new Date().toISOString();
+    const payment = {
+      id: makeId("payment"),
+      table: selectedTable,
+      paidAt,
+      subtotal,
+      discount,
+      total: subtotal - discount,
+      method,
+      receiptName: state.receipts[selectedTable]?.name || "",
+      orders: orders.map((order) => order.id),
+      items: orders.flatMap((order) => order.items.map((item) => ({ ...item })))
+    };
+    updateState((current) => {
+      for (const id of payment.orders) {
+        const order = current.orders.find((entry) => entry.id === id);
+        if (!order || order.paid) throw new Error("注文状態が更新されました。テーブルを選び直してください。");
+        order.paid = true;
+        order.paidAt = paidAt;
+      }
+      current.payments.unshift(payment);
+      current.calls.forEach((call) => { if (call.table === selectedTable) call.resolved = true; });
+    });
+    render(getState());
+    showReceipt(payment);
+  });
+}
+
+function showReceipt(payment) {
+  const receiptRoot = document.querySelector("#receipt-modal .modal-content");
+  receiptRoot.innerHTML = `<div class="modal-header"><h2 class="modal-title fs-5">お会計完了</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button></div><div class="modal-body receipt-layout" id="receipt-paper"><div class="text-center"><strong>ajimaru</strong><div class="muted">テーブル ${payment.table} ・ ${formatTime(payment.paidAt)}</div>${payment.receiptName ? `<div class="mt-2">${escapeHtml(payment.receiptName)} 様</div><div>領収書</div>` : ""}</div>${payment.items.map((item) => `<div class="checkout-line"><span>${escapeHtml(item.name)} × ${item.quantity}</span><span>${money(item.unitPrice * item.quantity)}</span></div>`).join("")}<div class="checkout-line"><span>小計</span><strong>${money(payment.subtotal)}</strong></div><div class="checkout-line"><span>割引</span><span>−${money(payment.discount)}</span></div><div class="total-row"><span>合計</span><strong>${money(payment.total)}</strong></div><div class="text-center muted mt-3">${escapeHtml(payment.method)} ・ ${dateKey(payment.paidAt)}</div></div><div class="modal-footer"><button class="btn btn-outline-dark" data-bs-dismiss="modal">閉じる</button><button id="print-receipt" class="btn btn-primary">レシートを印刷</button></div>`;
+  const modal = new bootstrap.Modal(document.querySelector("#receipt-modal"));
+  modal.show();
+  receiptRoot.querySelector("#print-receipt").addEventListener("click", () => {
+    setPaperWidth(paperSelect.value);
+    printDocument();
+  });
+}
+
+function renderDaily(state) {
+  const key = document.querySelector("#daily-date").value || dateKey();
+  const payments = state.payments.filter((payment) => dateKey(payment.paidAt) === key);
+  const sales = payments.reduce((sum, payment) => sum + payment.total, 0);
+  const discounts = payments.reduce((sum, payment) => sum + payment.discount, 0);
+  const orderCount = payments.reduce((sum, payment) => sum + payment.orders.length, 0);
+  document.querySelector("#daily-summary").innerHTML = `<div class="summary-cards register-daily-grid"><div class="summary-card"><span>売上</span><strong>${money(sales)}</strong></div><div class="summary-card"><span>会計件数</span><strong>${payments.length} 件</strong></div><div class="summary-card"><span>注文品数</span><strong>${orderCount} 点</strong></div><div class="summary-card"><span>割引</span><strong>${money(discounts)}</strong></div></div><div class="panel-card"><strong>支払方法別</strong><div class="mt-2">${["現金", "PayPay", "クレジット"].map((method) => `<div class="checkout-line"><span>${method}</span><strong>${money(payments.filter((payment) => payment.method === method).reduce((sum, payment) => sum + payment.total, 0))}</strong></div>`).join("")}</div></div>`;
+}
+
+function renderHistory(state) {
+  const key = document.querySelector("#history-date").value || dateKey();
+  const payments = state.payments.filter((payment) => dateKey(payment.paidAt) === key);
+  document.querySelector("#payment-history").innerHTML = payments.length ? payments.map((payment) => `<div class="history-row"><div><strong>テーブル ${payment.table} ・ ${escapeHtml(payment.method)}</strong><small>${formatTime(payment.paidAt)}${payment.receiptName ? ` ・ 宛名 ${escapeHtml(payment.receiptName)}` : ""}</small></div><strong>${money(payment.total)}</strong></div>`).join("") : `<p class="muted mb-0">この日の会計履歴はありません。</p>`;
+}
+
+document.querySelectorAll("[data-register-tab]").forEach((button) => button.addEventListener("click", () => {
+  activeTab = button.dataset.registerTab;
+  document.querySelectorAll("[data-register-tab]").forEach((tab) => tab.classList.toggle("active", tab === button));
+  document.querySelector("#checkout-pane").classList.toggle("d-none", activeTab !== "checkout");
+  document.querySelector("#daily-pane").classList.toggle("d-none", activeTab !== "daily");
+  document.querySelector("#history-pane").classList.toggle("d-none", activeTab !== "history");
+}));
+document.querySelector("#daily-date").addEventListener("change", () => renderDaily(getState()));
+document.querySelector("#history-date").addEventListener("change", () => renderHistory(getState()));
+paperSelect.addEventListener("change", () => setPaperWidth(paperSelect.value));
+subscribe(render);
+render();
