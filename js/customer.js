@@ -142,8 +142,32 @@ function renderTableOrders(state = getState()) {
   root.innerHTML = ownOrders.length ? readyBanner + ownOrders.map(orderCard).join("") : `<div class="no-orders">まだご注文はありません。メニューを選んでご注文ください。</div>`;
 }
 
+function orderNumber(order) {
+  return Date.parse(order.createdAt);
+}
+
+function readyMessage(order) {
+  return `料理が完了しました。カウンターまでお越しください。よろしくお願いいたします。注文 #${orderNumber(order)}`;
+}
+
 function orderCard(order) {
-  return `<article class="order-status-card"><div class="d-flex justify-content-between gap-2"><h3>${formatTime(order.createdAt)} のご注文</h3><span class="badge text-bg-light">${statusLabel(order.status)}</span></div><p>${order.items.map((item) => `${escapeHtml(item.name)} × ${item.quantity}`).join("、")}</p><strong>${money(order.subtotal)}</strong></article>`;
+  const ready = order.status === "ready" ? `<div style="background:#fff3cd;color:#664d03;font-weight:700;border-radius:8px;padding:8px 10px;margin:8px 0">🍛 ${escapeHtml(readyMessage(order))}</div>` : "";
+  return `<article class="order-status-card"><div class="d-flex justify-content-between gap-2"><h3>${formatTime(order.createdAt)} のご注文 <small>#${orderNumber(order)}</small></h3><span class="badge text-bg-light">${statusLabel(order.status)}</span></div>${ready}<p>${order.items.map((item) => `${escapeHtml(item.name)} × ${item.quantity}`).join("、")}</p><strong>${money(order.subtotal)}</strong></article>`;
+}
+
+let knownStatuses = null;
+function announceReadyOrders(state) {
+  const own = state.orders.filter((order) => order.table === table);
+  if (knownStatuses && "speechSynthesis" in window) {
+    for (const order of own) {
+      if (order.status === "ready" && knownStatuses[order.id] !== "ready") {
+        const utterance = new SpeechSynthesisUtterance(readyMessage(order).replace("#", "番号 "));
+        utterance.lang = "ja-JP";
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+  }
+  knownStatuses = Object.fromEntries(own.map((order) => [order.id, order.status]));
 }
 
 document.querySelector("#categories").addEventListener("click", (event) => {
@@ -179,4 +203,5 @@ document.querySelector("#receipt-form").addEventListener("submit", (event) => {
 renderMenu();
 renderTableOrders();
 renderCartSummary();
-subscribe((state) => { renderMenu(state); renderTableOrders(state); });
+announceReadyOrders(getState());
+subscribe((state) => { announceReadyOrders(state); renderMenu(state); renderTableOrders(state); });
