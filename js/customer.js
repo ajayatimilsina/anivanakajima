@@ -133,7 +133,7 @@ function renderTableOrders(state = getState()) {
   const announcement = state.announcements.filter((entry) => !entry.table || entry.table === table).at(-1);
   const root = document.querySelector("#table-orders");
   const readyBanner = ownOrders.some((order) => order.status === "ready")
-    ? `<div class="no-orders" style="background:#fff3cd;color:#664d03;font-size:1.2rem;font-weight:700;border:2px solid #e0a800">🍛 お料理ができあがりました。カウンターまでお越しください。</div>`
+    ? `<div class="no-orders" style="background:#fff3cd;color:#664d03;font-size:1.2rem;font-weight:700;border:2px solid #e0a800">🍛 テーブル ${table}、お料理ができあがりました。カウンターまでお越しください。</div>`
     : "";
   if (announcement && Date.now() - new Date(announcement.createdAt).getTime() < 30_000) {
     root.innerHTML = readyBanner + `<div class="no-orders" style="background:#e8f1eb;color:#254c3c;font-size:1.1rem;font-weight:700">${escapeHtml(announcement.message)}</div>` + (ownOrders.length ? ownOrders.map(orderCard).join("") : "");
@@ -147,7 +147,7 @@ function orderNumber(order) {
 }
 
 function readyMessage(order) {
-  return `料理が完了しました。カウンターまでお越しください。よろしくお願いいたします。注文 #${orderNumber(order)}`;
+  return `テーブル ${order.table}、料理が完了しました。カウンターまでお越しください。よろしくお願いいたします。注文 #${orderNumber(order)}`;
 }
 
 function orderCard(order) {

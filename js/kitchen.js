@@ -38,7 +38,7 @@ function render(state = getState()) {
       id: makeId("announcement"),
       table: order.table,
       orderId: order.id,
-      message: "料理が完了しました。カウンターまでお越しください。よろしくお願いいたします。",
+      message: `テーブル ${order.table}、料理が完了しました。カウンターまでお越しください。よろしくお願いいたします。`,
       createdAt: new Date().toISOString()
     }));
     button.textContent = "✅ 呼び出しました";
@@ -67,7 +67,7 @@ function renderCalls(calls) {
     updateState((state) => state.announcements.push({
       id: makeId("announcement"),
       table: Number(button.dataset.voiceCall),
-      message: "カウンターまでお越しください。よろしくお願いいたします。",
+      message: `テーブル ${button.dataset.voiceCall}、カウンターまでお越しください。よろしくお願いいたします。`,
       createdAt: new Date().toISOString()
     }));
     button.textContent = "✅ 呼び出しました";
