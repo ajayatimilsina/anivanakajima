@@ -96,10 +96,28 @@ function renderCheckout(state) {
   });
 }
 
-function showReceipt(payment) {
+function showReceipt(payment, mode = "receipt") {
+  const isInvoice = mode === "invoice";
   const receiptRoot = document.querySelector("#receipt-modal .modal-content");
-  receiptRoot.innerHTML = `<div class="modal-header"><h2 class="modal-title fs-5">お会計完了</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button></div><div class="modal-body receipt-layout" id="receipt-paper"><div class="text-center"><strong>ajimaru</strong><div class="muted">テーブル ${payment.table} ・ ${formatTime(payment.paidAt)}</div>${payment.receiptName ? `<div class="mt-2">${escapeHtml(payment.receiptName)} 様</div><div>領収書</div>` : ""}</div>${payment.items.map((item) => `<div class="checkout-line"><span>${escapeHtml(item.name)} × ${item.quantity}</span><span>${money(item.unitPrice * item.quantity)}</span></div>`).join("")}<div class="checkout-line"><span>小計</span><strong>${money(payment.subtotal)}</strong></div><div class="checkout-line"><span>割引</span><span>−${money(payment.discount)}</span></div><div class="total-row"><span>合計</span><strong>${money(payment.total)}</strong></div><div class="text-center muted mt-3">${escapeHtml(payment.method)} ・ ${dateKey(payment.paidAt)}</div></div><div class="modal-footer"><button class="btn btn-outline-dark" data-bs-dismiss="modal">閉じる</button><button id="print-receipt" class="btn btn-primary">レシートを印刷</button></div>`;
+  const heading = isInvoice ? "領収書" : mode === "reprint" ? "レシート再印刷" : "お会計完了";
+  const nameBlock = isInvoice
+    ? `<div class="mt-2 fs-5"><span id="invoice-name">${escapeHtml(payment.receiptName || "　　　　　　")}</span> 様</div><div class="fw-bold">領収書</div>`
+    : payment.receiptName ? `<div class="mt-2">${escapeHtml(payment.receiptName)} 様</div><div>領収書</div>` : "";
+  receiptRoot.innerHTML = `<div class="modal-header"><h2 class="modal-title fs-5">${heading}</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button></div><div class="modal-body receipt-layout" id="receipt-paper"><div class="text-center"><strong>ajimaru</strong><div class="muted">テーブル ${payment.table} ・ ${formatTime(payment.paidAt)}</div>${nameBlock}</div>${payment.items.map((item) => `<div class="checkout-line"><span>${escapeHtml(item.name)} × ${item.quantity}</span><span>${money(item.unitPrice * item.quantity)}</span></div>`).join("")}<div class="checkout-line"><span>小計</span><strong>${money(payment.subtotal)}</strong></div><div class="checkout-line"><span>割引</span><span>−${money(payment.discount)}</span></div><div class="total-row"><span>合計</span><strong>${money(payment.total)}</strong></div>${isInvoice ? `<div class="text-center mt-3">但し お飲食代として<br>上記正に領収いたしました</div>` : ""}<div class="text-center muted mt-3">${escapeHtml(payment.method)} ・ ${dateKey(payment.paidAt)}</div></div><div class="modal-footer"><button class="btn btn-outline-dark" data-bs-dismiss="modal">閉じる</button><button id="print-receipt" class="btn btn-primary">${isInvoice ? "領収書を印刷" : "レシートを印刷"}</button></div>`;
   const modal = new bootstrap.Modal(document.querySelector("#receipt-modal"));
+  if (isInvoice) {
+    const field = document.createElement("div");
+    field.className = "px-3 pt-3 no-print";
+    field.innerHTML = `<label class="form-label small">宛名（領収書に記載）</label><input id="invoice-input" class="form-control" value="${escapeHtml(payment.receiptName || "")}" placeholder="例: 株式会社〇〇">`;
+    receiptRoot.querySelector(".modal-header").after(field);
+    field.querySelector("input").addEventListener("input", (event) => {
+      receiptRoot.querySelector("#invoice-name").textContent = event.target.value.trim() || "　　　　　　";
+    });
+    field.querySelector("input").addEventListener("change", (event) => {
+      const name = event.target.value.trim();
+      updateState((current) => { const target = current.payments.find((entry) => entry.id === payment.id); if (target) target.receiptName = name; });
+    });
+  }
   modal.show();
   receiptRoot.querySelector("#print-receipt").addEventListener("click", () => {
     setPaperWidth(paperSelect.value);
@@ -119,7 +137,21 @@ function renderDaily(state) {
 function renderHistory(state) {
   const key = document.querySelector("#history-date").value || dateKey();
   const payments = state.payments.filter((payment) => dateKey(payment.paidAt) === key);
-  document.querySelector("#payment-history").innerHTML = payments.length ? payments.map((payment) => `<div class="history-row"><div><strong>テーブル ${payment.table} ・ ${escapeHtml(payment.method)}</strong><small>${formatTime(payment.paidAt)}${payment.receiptName ? ` ・ 宛名 ${escapeHtml(payment.receiptName)}` : ""}</small></div><strong>${money(payment.total)}</strong></div>`).join("") : `<p class="muted mb-0">この日の会計履歴はありません。</p>`;
+  const methods = ["現金", "PayPay", "クレジット"];
+  const historyRoot = document.querySelector("#payment-history");
+  historyRoot.innerHTML = payments.length ? payments.map((payment) => `<div class="history-row flex-wrap gap-2"><div><strong>テーブル ${payment.table} ・ ${escapeHtml(payment.method)}</strong><small>${formatTime(payment.paidAt)}${payment.receiptName ? ` ・ 宛名 ${escapeHtml(payment.receiptName)}` : ""}</small></div><strong class="ms-auto">${money(payment.total)}</strong><div class="d-flex flex-wrap gap-1 w-100"><button class="btn btn-sm btn-outline-dark" data-reprint="${escapeHtml(payment.id)}">再印刷</button><button class="btn btn-sm btn-outline-dark" data-invoice="${escapeHtml(payment.id)}">領収書印刷</button><select class="form-select form-select-sm" style="width:auto" data-method-for="${escapeHtml(payment.id)}">${methods.map((method) => `<option value="${method}"${method === payment.method ? " selected" : ""}>${method}</option>`).join("")}</select><button class="btn btn-sm btn-outline-primary" data-change-method="${escapeHtml(payment.id)}">支払方法を変更</button></div></div>`).join("") : `<p class="muted mb-0">この日の会計履歴はありません。</p>`;
+  const find = (id) => getState().payments.find((payment) => payment.id === id);
+  historyRoot.querySelectorAll("[data-reprint]").forEach((button) => button.addEventListener("click", () => showReceipt(find(button.dataset.reprint), "reprint")));
+  historyRoot.querySelectorAll("[data-invoice]").forEach((button) => button.addEventListener("click", () => {
+    const payment = find(button.dataset.invoice);
+    if (!payment) return;
+    showReceipt(payment, "invoice");
+  }));
+  historyRoot.querySelectorAll("[data-change-method]").forEach((button) => button.addEventListener("click", () => {
+    const id = button.dataset.changeMethod;
+    const method = historyRoot.querySelector(`[data-method-for="${id}"]`).value;
+    updateState((current) => { const target = current.payments.find((entry) => entry.id === id); if (target) target.method = method; });
+  }));
 }
 
 document.querySelectorAll("[data-register-tab]").forEach((button) => button.addEventListener("click", () => {

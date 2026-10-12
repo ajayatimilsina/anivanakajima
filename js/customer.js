@@ -195,7 +195,7 @@ function announceReadyOrders(state) {
   const targeted = state.announcements.filter((entry) => entry.table === table);
   if (knownAnnouncementIds) {
     targeted.filter((entry) => !knownAnnouncementIds.has(entry.id) && Date.now() - new Date(entry.createdAt).getTime() < 60_000)
-      .forEach((entry) => speakText(entry.message.replace("#", "番号 ")));
+      .forEach((entry) => speakText(entry.message));
   }
   knownAnnouncementIds = new Set(targeted.map((entry) => entry.id));
 }

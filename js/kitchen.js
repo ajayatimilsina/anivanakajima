@@ -38,7 +38,7 @@ function render(state = getState()) {
       id: makeId("announcement"),
       table: order.table,
       orderId: order.id,
-      message: `料理が完了しました。カウンターまでお越しください。よろしくお願いいたします。注文 #${Date.parse(order.createdAt)}`,
+      message: "料理が完了しました。カウンターまでお越しください。よろしくお願いいたします。",
       createdAt: new Date().toISOString()
     }));
     button.textContent = "✅ 呼び出しました";
@@ -95,6 +95,14 @@ subscribe((state) => {
   newOrders.forEach((order) => knownOrderIds.add(order.id));
   if (newOrders.length) {
     playTone();
+    if (soundEnabled && "speechSynthesis" in window) {
+      newOrders.forEach((order) => {
+        const items = order.items.map((item) => `${item.name} ${item.quantity}`).join("、");
+        const utterance = new SpeechSynthesisUtterance(`テーブル ${order.table}、${items}`);
+        utterance.lang = "ja-JP";
+        window.speechSynthesis.speak(utterance);
+      });
+    }
     if (autoPrintEnabled) {
       newOrders.forEach((order) => {
         let shouldPrint = false;
