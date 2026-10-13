@@ -25,7 +25,7 @@ function renderCategories(state) {
 
 function renderItems(state) {
   const query = document.querySelector("#menu-filter").value.trim().toLowerCase();
-  const items = state.menu.filter((item) => `${item.name} ${item.category}`.toLowerCase().includes(query));
+  const items = state.menu.filter((item) => `${item.name} ${item.category} ${window.ajimaruI18n.translate(item.name)} ${window.ajimaruI18n.translate(item.category)}`.toLowerCase().includes(query));
   document.querySelector("#menu-item-count").textContent = `${items.length} 商品`;
   document.querySelector("#menu-admin-list").innerHTML = items.map((item) => `<tr><td><strong>${escapeHtml(item.name)}</strong><div class="muted">#${item.id} ・ ${item.stock < 5 && item.stock > 0 ? "残りわずか" : item.stock === 0 ? "在庫切れ" : `在庫 ${item.stock}`}</div></td><td>${escapeHtml(item.category)}</td><td>${money(item.price)}</td><td>${item.stock}</td><td><label class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" data-available-item="${item.id}" ${item.available ? "checked" : ""}><span class="visually-hidden">販売中</span></label></td><td>${item.options.length ? escapeHtml(item.options.map((option) => option.name).join(", ")) : "—"}</td><td><button class="btn btn-sm btn-outline-dark" data-edit-item="${item.id}">編集</button></td></tr>`).join("");
   document.querySelectorAll("[data-available-item]").forEach((input) => input.addEventListener("change", () => updateState((current) => {

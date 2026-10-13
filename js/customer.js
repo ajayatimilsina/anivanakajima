@@ -1,4 +1,4 @@
-import { getState, updateState, subscribe, escapeHtml, money, makeId, formatTime, isOrderable } from "./store.js";
+import { getState, getOrderingStatus, updateState, updateStateAsync, subscribe, escapeHtml, money, makeId, formatTime, isOrderable } from "./store.js";
 
 const params = new URLSearchParams(location.search);
 const requestedTable = Number(params.get("table") || 1);
@@ -16,17 +16,36 @@ itemModal = new bootstrap.Modal(document.querySelector("#item-modal"));
 cartModal = new bootstrap.Modal(document.querySelector("#cart-modal"));
 
 function renderMenu(state = getState()) {
+  const orderingPaused = getOrderingStatus(state).paused;
   const categories = ["すべて", ...new Set(state.menu.map((item) => item.category))];
   const categoriesRoot = document.querySelector("#categories");
   categoriesRoot.innerHTML = categories.map((category) => `<button class="category-chip ${selectedCategory === category ? "active" : ""}" data-category="${escapeHtml(category)}">${escapeHtml(category)}</button>`).join("");
   const query = document.querySelector("#menu-search").value.trim().toLowerCase();
   const visible = state.menu.filter((item) => (selectedCategory === "すべて" || item.category === selectedCategory)
-    && (!query || `${item.name} ${item.category}`.toLowerCase().includes(query)));
+    && (!query || `${item.name} ${item.category} ${window.ajimaruI18n.translate(item.name)} ${window.ajimaruI18n.translate(item.category)}`.toLowerCase().includes(query)));
   document.querySelector("#menu-list").innerHTML = visible.length ? visible.map((item) => {
     const canOrder = isOrderable(item);
     const index = Math.abs(item.id) % foodIcons.length;
-    return `<article class="menu-card ${canOrder ? "" : "unavailable"}"><div class="menu-illustration" aria-hidden="true">${foodIcons[index]}</div><div class="menu-card-body"><div><h3>${escapeHtml(item.name)}</h3><div class="muted">${escapeHtml(item.category)}</div></div><div class="menu-card-bottom"><div><span class="menu-price">${money(item.price)}</span>${item.stock < 5 && canOrder ? `<span class="stock-note"> 残りわずか</span>` : ""}${!canOrder ? `<span class="stock-note"> 欠品</span>` : ""}</div><button class="add-item" data-add-item="${item.id}" ${canOrder ? "" : "disabled"} aria-label="${escapeHtml(item.name)}を追加">+</button></div></div></article>`;
+    return `<article class="menu-card ${canOrder ? "" : "unavailable"}"><div class="menu-illustration" aria-hidden="true">${foodIcons[index]}</div><div class="menu-card-body"><div><h3>${escapeHtml(item.name)}</h3><div class="muted">${escapeHtml(item.category)}</div></div><div class="menu-card-bottom"><div><span class="menu-price">${money(item.price)}</span>${item.stock < 5 && canOrder ? `<span class="stock-note"> 残りわずか</span>` : ""}${!canOrder ? `<span class="stock-note"> 欠品</span>` : ""}</div><button class="add-item" data-add-item="${item.id}" ${canOrder && !orderingPaused ? "" : "disabled"} aria-label="${escapeHtml(item.name)}を追加">+</button></div></div></article>`;
   }).join("") : `<div class="no-orders">該当するメニューがありません。</div>`;
+}
+
+function renderOrderingStatus(state = getState()) {
+  const status = getOrderingStatus(state);
+  const banner = document.querySelector("#ordering-status");
+  banner.hidden = !status.paused;
+  banner.classList.toggle("ordering-status-busy", status.automaticallyPaused);
+  banner.classList.toggle("ordering-status-manual", !status.automaticallyPaused && status.manuallyPaused);
+  if (status.automaticallyPaused) {
+    banner.innerHTML = `<strong>キッチンが混み合っています。</strong><span>未会計・未提供の注文が <b>${status.activeOrders}</b> 件あるため、新しい注文を一時停止しています。</span>`;
+  } else if (status.manuallyPaused) {
+    banner.innerHTML = `<strong>キッチンが注文受付を一時停止しています。</strong><span>注文再開まで5分ほどお待ちください。</span>`;
+  } else {
+    banner.replaceChildren();
+  }
+  document.querySelectorAll("[data-add-item]").forEach((button) => { button.disabled ||= status.paused; });
+  const sendOrderButton = document.querySelector("#send-order");
+  if (sendOrderButton) sendOrderButton.disabled = status.paused;
 }
 
 function renderCartSummary() {
@@ -37,12 +56,21 @@ function renderCartSummary() {
 }
 
 function showItem(item) {
+  if (getOrderingStatus().paused) {
+    renderOrderingStatus();
+    return;
+  }
   modalItemId = item.id;
   const choices = item.options.map((group, groupIndex) => `<fieldset class="mb-3"><legend class="form-label">${escapeHtml(group.name)}</legend>${group.choices.map((choice, choiceIndex) =>
     `<label class="option-choice"><input type="radio" name="item-option-${groupIndex}" value="${choiceIndex}" ${choiceIndex === 0 ? "checked" : ""}> ${escapeHtml(choice.name)} ${choice.price ? `(+${money(choice.price)})` : ""}</label>`).join("")}</fieldset>`).join("");
   document.querySelector("#item-modal .modal-content").innerHTML = `<div class="modal-header"><div><span class="eyebrow">${escapeHtml(item.category)}</span><h2 class="modal-title fs-5">${escapeHtml(item.name)}</h2></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button></div><div class="modal-body"><p class="mb-2">基本価格 <strong>${money(item.price)}</strong></p>${choices || `<p class="muted mb-0">オプションはありません。</p>`}<label class="form-label mt-3">数量</label><input id="item-quantity" class="form-control" type="number" min="1" max="${Math.min(20, item.stock)}" value="1"></div><div class="modal-footer"><button id="add-to-cart" class="btn btn-primary">カートに追加</button></div>`;
   document.querySelector("#add-to-cart").addEventListener("click", () => {
     const state = getState();
+    if (getOrderingStatus(state).paused) {
+      renderOrderingStatus(state);
+      itemModal.hide();
+      return;
+    }
     const fresh = state.menu.find((menuItem) => menuItem.id === modalItemId);
     if (!fresh || !isOrderable(fresh)) {
       itemModal.hide();
@@ -79,6 +107,7 @@ function renderCart() {
   }
   const total = cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
   content.innerHTML = `<div class="modal-header"><div><span class="eyebrow">${tableLabel}</span><h2 class="modal-title fs-5">ご注文内容</h2></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button></div><div class="modal-body">${cart.map((line, index) => `<div class="checkout-line"><div><strong>${escapeHtml(line.name)}</strong><div class="muted">${escapeHtml(line.optionLabel || "")}</div><div class="quantity-control mt-2"><button data-cart-qty="${index}" data-delta="-1" aria-label="減らす">−</button><span>${line.quantity}</span><button data-cart-qty="${index}" data-delta="1" aria-label="増やす">＋</button></div></div><strong>${money(line.unitPrice * line.quantity)}</strong></div>`).join("")}<label class="form-label mt-3" for="order-note">注文メモ（任意）</label><input id="order-note" class="form-control" maxlength="120" placeholder="例：辛さ控えめ"></div><div class="modal-footer justify-content-between"><strong>合計 ${money(total)}</strong><button id="send-order" class="btn btn-primary">注文を送信</button></div>`;
+  renderOrderingStatus();
   content.querySelectorAll("[data-cart-qty]").forEach((button) => button.addEventListener("click", () => {
     const index = Number(button.dataset.cartQty);
     cart[index].quantity += Number(button.dataset.delta);
@@ -86,8 +115,12 @@ function renderCart() {
     renderCartSummary();
     renderCart();
   }));
-  document.querySelector("#send-order").addEventListener("click", () => {
+  document.querySelector("#send-order").addEventListener("click", async () => {
     const state = getState();
+    if (getOrderingStatus(state).paused) {
+      renderOrderingStatus(state);
+      return;
+    }
     const lines = cart.map((line) => {
       const fresh = state.menu.find((item) => item.id === line.itemId);
       return { ...line, stock: fresh?.stock ?? 0, available: fresh ? isOrderable(fresh) : false };
@@ -108,14 +141,23 @@ function renderCart() {
       items: cart.map(({ stock, available, ...line }) => ({ ...line })),
       subtotal: cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0)
     };
-    updateState((next) => {
-      for (const line of order.items) {
-        const item = next.menu.find((menuItem) => menuItem.id === line.itemId);
-        if (!item || !isOrderable(item) || item.stock < line.quantity) throw new Error(`${line.name}の在庫が不足しています。`);
-        item.stock -= line.quantity;
-      }
-      next.orders.unshift(order);
-    });
+    try {
+      await updateStateAsync((next) => {
+        if (getOrderingStatus(next).paused) throw new Error("注文受付を一時停止中です。時間をおいて再度お試しください。");
+        for (const line of order.items) {
+          const item = next.menu.find((menuItem) => menuItem.id === line.itemId);
+          if (!item || !isOrderable(item) || item.stock < line.quantity) throw new Error(`${line.name}の在庫が不足しています。`);
+          item.stock -= line.quantity;
+        }
+        next.orders.unshift(order);
+      });
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      console.error("Could not submit customer order.", error);
+      renderOrderingStatus();
+      window.alert(error.message);
+      return;
+    }
     cart.splice(0, cart.length);
     renderCartSummary();
     renderMenu();
@@ -218,7 +260,10 @@ document.querySelector("#categories").addEventListener("click", (event) => {
 });
 document.querySelector("#menu-list").addEventListener("click", (event) => {
   const button = event.target.closest("[data-add-item]");
-  if (!button) return;
+  if (!button || button.disabled || getOrderingStatus().paused) {
+    renderOrderingStatus();
+    return;
+  }
   const item = getState().menu.find((entry) => entry.id === Number(button.dataset.addItem));
   if (item) showItem(item);
 });
@@ -243,4 +288,19 @@ renderMenu();
 renderTableOrders();
 renderCartSummary();
 announceReadyOrders(getState());
-subscribe((state) => { announceReadyOrders(state); renderMenu(state); renderTableOrders(state); });
+let wasOrderingPaused = getOrderingStatus().paused;
+renderOrderingStatus();
+subscribe((state) => {
+  announceReadyOrders(state);
+  renderMenu(state);
+  renderTableOrders(state);
+  renderOrderingStatus(state);
+  wasOrderingPaused = getOrderingStatus(state).paused;
+});
+window.setInterval(() => {
+  const state = getState();
+  const paused = getOrderingStatus(state).paused;
+  renderOrderingStatus(state);
+  if (paused !== wasOrderingPaused) renderMenu(state);
+  wasOrderingPaused = paused;
+}, 1000);

@@ -2,6 +2,8 @@ import menuSeed from "../data/menu.json" with { type: "json" };
 
 const STORAGE_KEY = "ajimaru-pos-demo-v1";
 const CHANNEL_NAME = "ajimaru-pos-demo";
+export const ORDER_QUEUE_LIMIT = 10;
+export const ORDER_PAUSE_DURATION_MS = 5 * 60_000;
 const channel = "BroadcastChannel" in window ? new BroadcastChannel(CHANNEL_NAME) : null;
 const subscribers = new Set();
 
@@ -15,7 +17,7 @@ function initialState() {
     calls: [],
     receipts: {},
     announcements: [],
-    settings: { paperWidth: "80", sound: false, kitchenAutoPrint: true },
+    settings: { paperWidth: "80", sound: false, kitchenAutoPrint: true, orderingPausedUntil: 0 },
     printedKitchenOrderIds: []
   };
 }
@@ -34,7 +36,7 @@ function normalizeState(raw) {
     state.receipts = Object.fromEntries(state.receipts.map((value, index) => [index, value]).filter(([, value]) => value));
   }
   state.receipts ||= {};
-  state.settings = { paperWidth: "80", sound: false, kitchenAutoPrint: true, ...(state.settings || {}) };
+  state.settings = { paperWidth: "80", sound: false, kitchenAutoPrint: true, orderingPausedUntil: 0, ...(state.settings || {}) };
   state.version = 1;
   state.menu.forEach((item) => { item.options = Array.isArray(item.options) ? item.options : []; });
   const fixLines = (lines) => (Array.isArray(lines) ? lines : Object.values(lines || {})).map((line) => ({ ...line, options: Array.isArray(line.options) ? line.options : [] }));
@@ -104,6 +106,21 @@ export function getState() {
   }
 }
 
+export function getOrderingStatus(state = getState(), now = Date.now()) {
+  const activeOrders = state.orders.filter((order) => !order.paid && order.status !== "served").length;
+  const storedPauseUntil = Number(state.settings?.orderingPausedUntil);
+  const manualPauseUntil = Number.isFinite(storedPauseUntil) ? storedPauseUntil : 0;
+  const manuallyPaused = manualPauseUntil > now;
+  const automaticallyPaused = activeOrders >= ORDER_QUEUE_LIMIT;
+  return {
+    activeOrders,
+    manualPauseUntil,
+    manuallyPaused,
+    automaticallyPaused,
+    paused: manuallyPaused || automaticallyPaused
+  };
+}
+
 export function updateState(mutator) {
   if (syncMode === "firebase") {
     const draft = structuredClone(cache);
@@ -131,6 +148,26 @@ export function updateState(mutator) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   channel?.postMessage({ type: "state-updated" });
   subscribers.forEach((listener) => listener(state));
+  return result;
+}
+
+export async function updateStateAsync(mutator) {
+  if (syncMode !== "firebase") return updateState(mutator);
+  let rejectedError;
+  const result = await runRemoteTransaction(remoteRef, (current) => {
+    const state = normalizeState(current ?? initialState());
+    try {
+      mutator(state);
+    } catch (error) {
+      rejectedError = error;
+      return;
+    }
+    return JSON.parse(JSON.stringify(state));
+  });
+  if (rejectedError) throw rejectedError;
+  if (!result.committed) throw new Error("共有データを更新できませんでした。");
+  cache = normalizeState(result.snapshot.val());
+  subscribers.forEach((listener) => listener(cache));
   return result;
 }
 

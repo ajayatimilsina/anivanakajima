@@ -9,7 +9,7 @@ function render(state = getState()) {
   const active = items.filter(isOrderable).length;
   document.querySelector("#inventory-summary").innerHTML = `<div class="summary-card"><span>登録商品</span><strong>${items.length} 品</strong></div><div class="summary-card"><span>販売中</span><strong>${active} 品</strong></div><div class="summary-card"><span>残りわずか</span><strong>${low} 品</strong></div><div class="summary-card"><span>在庫切れ</span><strong>${out} 品</strong></div>`;
   const query = document.querySelector("#inventory-filter").value.trim().toLowerCase();
-  const visible = items.filter((item) => `${item.name} ${item.category}`.toLowerCase().includes(query));
+  const visible = items.filter((item) => `${item.name} ${item.category} ${window.ajimaruI18n.translate(item.name)} ${window.ajimaruI18n.translate(item.category)}`.toLowerCase().includes(query));
   document.querySelector("#inventory-list").innerHTML = visible.map((item) => `<tr><td><strong>${escapeHtml(item.name)}</strong><div class="muted">#${item.id}</div></td><td>${escapeHtml(item.category)}</td><td>${item.stock} 個</td><td><input class="form-control inventory-count" type="number" min="0" step="1" value="${item.stock}" data-count-id="${item.id}" aria-label="${escapeHtml(item.name)}の棚卸実数"></td><td data-difference-for="${item.id}">±0</td><td><span class="inventory-state ${item.stock === 0 ? "out" : item.stock < 5 ? "low" : ""}">${item.stock === 0 ? "欠品" : item.stock < 5 ? "残りわずか" : item.available ? "販売中" : "販売停止"}</span></td></tr>`).join("");
   document.querySelectorAll("[data-count-id]").forEach((input) => input.addEventListener("input", () => {
     const item = state.menu.find((entry) => entry.id === Number(input.dataset.countId));

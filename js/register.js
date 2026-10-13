@@ -54,18 +54,35 @@ function renderCheckout(state) {
     return;
   }
   const subtotal = orders.reduce((sum, order) => sum + order.subtotal, 0);
-  root.innerHTML = `<div class="panel-heading"><div><span class="eyebrow">CHECKOUT</span><h2>テーブル ${selectedTable}</h2></div><span class="badge text-bg-light">${orders.length}件の注文</span></div>${orders.map((order) => `<div class="checkout-line"><div><strong>${escapeHtml(order.items.map((item) => `${item.name} × ${item.quantity}`).join("、"))}</strong><small class="d-block muted">${formatTime(order.createdAt)} ・ ${escapeHtml({ pending: "受付済み", preparing: "調理中", ready: "できあがり", served: "提供済み" }[order.status] || order.status)}</small></div><strong>${money(order.subtotal)}</strong></div>`).join("")}<div class="discount-row"><span>割引</span><input id="discount-value" class="form-control" type="number" min="0" step="1" value="0"><select id="discount-mode" class="form-select" style="max-width:95px"><option value="yen">円</option><option value="percent">%</option></select><span class="muted">合計から値引き</span></div><div class="total-row"><span>お会計</span><strong id="checkout-total">${money(subtotal)}</strong></div><div class="payment-row"><select id="payment-method" class="form-select"><option value="現金">現金</option><option value="PayPay">PayPay</option><option value="クレジット">クレジット</option></select><button id="complete-payment" class="btn btn-primary">会計を完了</button></div>${receipt ? `<p class="feedback mt-3 mb-0">領収書宛名: ${escapeHtml(receipt.name)}</p>` : ""}`;
+  root.innerHTML = `<div class="panel-heading"><div><span class="eyebrow">CHECKOUT</span><h2>テーブル ${selectedTable}</h2></div><span class="badge text-bg-light">${orders.length}件の注文</span></div>${orders.map((order) => `<div class="checkout-line"><div><strong>${escapeHtml(order.items.map((item) => `${item.name} × ${item.quantity}`).join("、"))}</strong><small class="d-block muted">${formatTime(order.createdAt)} ・ ${escapeHtml({ pending: "受付済み", preparing: "調理中", ready: "できあがり", served: "提供済み" }[order.status] || order.status)}</small></div><strong>${money(order.subtotal)}</strong></div>`).join("")}<div class="discount-row"><span>割引</span><input id="discount-value" class="form-control" type="number" min="0" step="1" value="0"><select id="discount-mode" class="form-select" style="max-width:95px"><option value="yen">円</option><option value="percent">%</option></select><span class="muted">合計から値引き</span></div><div class="total-row"><span>お会計</span><strong id="checkout-total">${money(subtotal)}</strong></div><div id="cash-payment" class="cash-payment"><label for="cash-received" class="form-label">お預かり金額</label><input id="cash-received" class="form-control" type="number" min="0" step="1" value="${subtotal}"><div class="total-row"><span>お釣り</span><strong id="cash-change" aria-live="polite">${money(0)}</strong></div><p id="cash-shortage" class="feedback mb-0" role="status"></p></div><div class="payment-row"><select id="payment-method" class="form-select"><option value="現金">現金</option><option value="PayPay">PayPay</option><option value="クレジット">クレジット</option></select><button id="complete-payment" class="btn btn-primary">会計を完了</button></div>${receipt ? `<p class="feedback mt-3 mb-0">領収書宛名: ${escapeHtml(receipt.name)}</p>` : ""}`;
   const discountValue = root.querySelector("#discount-value");
   const discountMode = root.querySelector("#discount-mode");
+  const paymentMethod = root.querySelector("#payment-method");
+  const cashPayment = root.querySelector("#cash-payment");
+  const cashReceived = root.querySelector("#cash-received");
+  const completePayment = root.querySelector("#complete-payment");
   const calculate = () => {
     const raw = Math.max(0, Number(discountValue.value) || 0);
     const discount = Math.min(subtotal, discountMode.value === "percent" ? Math.floor(subtotal * Math.min(raw, 100) / 100) : Math.floor(raw));
-    root.querySelector("#checkout-total").textContent = money(subtotal - discount);
+    const total = subtotal - discount;
+    root.querySelector("#checkout-total").textContent = money(total);
+    const isCash = paymentMethod.value === "現金";
+    cashPayment.classList.toggle("d-none", !isCash);
+    const received = Number(cashReceived.value);
+    const insufficientCash = isCash && (!Number.isInteger(received) || received < total);
+    root.querySelector("#cash-change").textContent = insufficientCash ? "—" : money(received - total);
+    root.querySelector("#cash-shortage").textContent = insufficientCash && Number.isInteger(received)
+      ? `あと ${money(total - received)} 不足しています。`
+      : "";
+    completePayment.disabled = insufficientCash;
     return discount;
   };
   discountValue.addEventListener("input", calculate);
   discountMode.addEventListener("change", calculate);
-  root.querySelector("#complete-payment").addEventListener("click", () => {
+  cashReceived.addEventListener("input", calculate);
+  paymentMethod.addEventListener("change", calculate);
+  calculate();
+  completePayment.addEventListener("click", () => {
     const discount = calculate();
     const method = root.querySelector("#payment-method").value;
     const paidAt = new Date().toISOString();
