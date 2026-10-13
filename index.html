@@ -16,6 +16,15 @@
   </header>
   <div id="ordering-status" class="ordering-status" role="status" aria-live="polite" hidden></div>
   <main class="customer-layout">
+    <section class="order-status-wrap">
+      <div class="section-heading"><div><span class="eyebrow">YOUR TABLE</span><h2>ご注文状況</h2></div></div>
+      <div id="table-orders" class="table-orders"></div>
+    </section>
+    <section class="receipt-request">
+      <div><span class="eyebrow">RECEIPT</span><h2>領収書が必要ですか？</h2><p>宛名を登録すると、お会計時に領収書へ反映されます。</p></div>
+      <form id="receipt-form" class="receipt-form"><input id="receipt-name" class="form-control" maxlength="40" placeholder="領収書の宛名"><button class="btn btn-dark">宛名を保存</button></form>
+      <p id="receipt-feedback" class="feedback" role="status"></p>
+    </section>
     <section class="welcome-banner">
       <div><span class="eyebrow">WELCOME TO AJIMARU</span><h1>お好きなメニューを<br>お選びください。</h1><p>ご注文はこの画面からどうぞ。スタッフが順番にお届けします。</p></div>
       <div class="welcome-art" aria-hidden="true">🍛</div>
@@ -26,15 +35,6 @@
     </div>
     <nav class="category-strip" id="categories" aria-label="メニューカテゴリ"></nav>
     <section class="menu-grid" id="menu-list" aria-live="polite"></section>
-    <section class="order-status-wrap">
-      <div class="section-heading"><div><span class="eyebrow">YOUR TABLE</span><h2>ご注文状況</h2></div></div>
-      <div id="table-orders" class="table-orders"></div>
-    </section>
-    <section class="receipt-request">
-      <div><span class="eyebrow">RECEIPT</span><h2>領収書が必要ですか？</h2><p>宛名を登録すると、お会計時に領収書へ反映されます。</p></div>
-      <form id="receipt-form" class="receipt-form"><input id="receipt-name" class="form-control" maxlength="40" placeholder="領収書の宛名"><button class="btn btn-dark">宛名を保存</button></form>
-      <p id="receipt-feedback" class="feedback" role="status"></p>
-    </section>
   </main>
   <div class="cart-dock"><div><span id="cart-count">0</span> 点 <strong id="cart-total">¥0</strong></div><button id="open-cart" class="btn btn-primary">カートを見る</button></div>
   <div class="modal fade" id="item-modal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"></div></div></div>

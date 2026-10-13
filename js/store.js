@@ -3,7 +3,7 @@ import menuSeed from "../data/menu.json" with { type: "json" };
 const STORAGE_KEY = "ajimaru-pos-demo-v1";
 const CHANNEL_NAME = "ajimaru-pos-demo";
 export const ORDER_QUEUE_LIMIT = 10;
-export const ORDER_PAUSE_DURATION_MS = 5 * 60_000;
+export const ORDER_PAUSE_DURATION_MS = 3 * 60_000;
 const channel = "BroadcastChannel" in window ? new BroadcastChannel(CHANNEL_NAME) : null;
 const subscribers = new Set();
 

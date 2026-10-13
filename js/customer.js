@@ -41,7 +41,7 @@ function renderOrderingStatus(state = getState()) {
   if (status.automaticallyPaused) {
     banner.innerHTML = `<strong>キッチンが混み合っています。</strong><span>未会計・未提供の注文が <b>${status.activeOrders}</b> 件あるため、新しい注文を一時停止しています。</span>`;
   } else if (status.manuallyPaused) {
-    banner.innerHTML = `<strong>キッチンが注文受付を一時停止しています。</strong><span>注文再開まで5分ほどお待ちください。</span>`;
+    banner.innerHTML = `<strong>キッチンが注文受付を一時停止しています。</strong><span>注文再開まで3分ほどお待ちください。</span>`;
   } else {
     banner.replaceChildren();
   }

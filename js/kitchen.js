@@ -42,7 +42,7 @@ function renderOrderingControls(state = getState()) {
     button.disabled = false;
   } else {
     summary.textContent = "注文受付中です。10件以上になると注文受付が自動停止します。";
-    button.textContent = "5分間注文停止";
+    button.textContent = "3分間注文停止";
     button.disabled = false;
   }
 }
