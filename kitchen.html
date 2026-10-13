@@ -9,7 +9,7 @@
 <body class="staff-page">
   <div id="staff-root"></div>
   <main class="staff-content"><div class="page-heading"><div><span class="eyebrow">KITCHEN DISPLAY</span><h1>キッチン</h1><p>注文を確認して、調理状況を更新します。</p></div><div class="heading-actions"><label class="form-check form-switch"><input id="sound-toggle" class="form-check-input" type="checkbox"><span class="form-check-label">通知音</span></label><label class="form-check form-switch"><input id="auto-print-toggle" class="form-check-input" type="checkbox"><span class="form-check-label">新規注文を自動印刷</span></label><button id="enable-sound" class="btn btn-outline-dark btn-sm">🔊 音声を有効にする</button></div></div>
-    <div class="kds-toolbar"><div id="kds-count" class="kds-count"></div><button id="announce-welcome" class="btn btn-outline-dark btn-sm">いらっしゃいませ</button><button id="announce-thanks" class="btn btn-outline-dark btn-sm">ありがとうございました</button></div>
+    <div class="kds-toolbar"><div id="kds-count" class="kds-count"></div><button id="announce-welcome" class="btn btn-outline-dark btn-sm">いらっしゃいませ</button><button id="announce-thanks" class="btn btn-outline-dark btn-sm">ありがとうございました</button><input id="call-table" type="number" min="1" class="form-control form-control-sm" style="width:90px" placeholder="テーブル"><button id="call-customer" class="btn btn-warning btn-sm">お客様を呼ぶ</button></div>
     <div id="kitchen-orders" class="kitchen-grid"></div>
   </main>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

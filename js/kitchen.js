@@ -34,17 +34,23 @@ function render(state = getState()) {
   root.querySelectorAll("[data-call-order]").forEach((button) => button.addEventListener("click", () => {
     const order = getState().orders.find((entry) => entry.id === button.dataset.callOrder);
     if (!order) return;
+    const message = `テーブル ${order.table}、料理が完了しました。カウンターまでお越しください。よろしくお願いいたします。`;
+    speakJa(message);
     updateState((current) => current.announcements.push({
       id: makeId("announcement"),
       table: order.table,
       orderId: order.id,
-      message: `テーブル ${order.table}、料理が完了しました。カウンターまでお越しください。よろしくお願いいたします。`,
+      message,
       createdAt: new Date().toISOString()
     }));
     button.textContent = "✅ 呼び出しました";
     setTimeout(() => { button.textContent = "📣 お客様を呼ぶ（声）"; }, 2500);
   }));
   root.querySelectorAll("[data-status]").forEach((button) => button.addEventListener("click", () => {
+    const order = getState().orders.find((entry) => entry.id === button.dataset.id);
+    if (button.dataset.status === "ready" && order) {
+      speakJa(`テーブル ${order.table}、料理が完了しました。カウンターまでお越しください。`);
+    }
     updateState((current) => {
       const order = current.orders.find((entry) => entry.id === button.dataset.id);
       if (order) order.status = button.dataset.status;
@@ -64,10 +70,13 @@ function renderCalls(calls) {
   container.innerHTML = `<strong>スタッフ呼び出し</strong><div class="d-flex flex-column gap-2 mt-2">${calls.map((call) => `<div class="d-flex flex-wrap gap-2"><button class="btn btn-warning btn-sm" data-resolve-call="${escapeHtml(call.id)}">テーブル ${call.table} ・ ${formatTime(call.createdAt)}　対応済み</button><button class="btn btn-outline-dark btn-sm" data-voice-call="${call.table}">📣 カウンターへ呼ぶ（声）</button></div>`).join("")}</div>`;
   document.querySelector(".staff-content").insertBefore(container, document.querySelector(".kds-toolbar"));
   container.querySelectorAll("[data-voice-call]").forEach((button) => button.addEventListener("click", () => {
+    const table = Number(button.dataset.voiceCall);
+    const message = `テーブル ${table}、カウンターまでお越しください。よろしくお願いいたします。`;
+    speakJa(message);
     updateState((state) => state.announcements.push({
       id: makeId("announcement"),
-      table: Number(button.dataset.voiceCall),
-      message: `テーブル ${button.dataset.voiceCall}、カウンターまでお越しください。よろしくお願いいたします。`,
+      table,
+      message,
       createdAt: new Date().toISOString()
     }));
     button.textContent = "✅ 呼び出しました";
@@ -141,7 +150,24 @@ autoPrintToggle.addEventListener("change", () => {
 });
 document.querySelector("#announce-welcome").addEventListener("click", () => setAnnouncement("いらっしゃいませ。ごゆっくりお楽しみください。"));
 document.querySelector("#announce-thanks").addEventListener("click", () => setAnnouncement("ありがとうございました。またお越しください。"));
-function setAnnouncement(message) {
-  updateState((state) => state.announcements.push({ id: makeId("announcement"), message, createdAt: new Date().toISOString() }));
-  if ("speechSynthesis" in window) window.speechSynthesis.speak(new SpeechSynthesisUtterance(message));
+document.querySelector("#call-customer").addEventListener("click", () => {
+  const tableNo = document.querySelector("#call-table").value.trim();
+  if (!tableNo) return;
+  setAnnouncement(`テーブル ${tableNo}、料理完了しました。カウンターまでお越しください。`, tableNo);
+});
+// iPad Safari needs speak() called synchronously in the tap and an explicit ja voice
+function speakJa(message) {
+  if (!("speechSynthesis" in window)) return;
+  const synth = window.speechSynthesis;
+  synth.cancel();
+  synth.resume();
+  const utterance = new SpeechSynthesisUtterance(message);
+  utterance.lang = "ja-JP";
+  const voice = synth.getVoices().find((v) => v.lang && v.lang.replace("_", "-").startsWith("ja"));
+  if (voice) utterance.voice = voice;
+  synth.speak(utterance);
+}
+function setAnnouncement(message, tableNo) {
+  speakJa(message);
+  updateState((state) => state.announcements.push({ id: makeId("announcement"), message, ...(tableNo ? { table: Number(tableNo) || tableNo } : {}), createdAt: new Date().toISOString() }));
 }
