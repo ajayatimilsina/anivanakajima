@@ -1,8 +1,9 @@
-import { getState, updateState, subscribe, renderStaffShell, escapeHtml, money, makeId, formatTime, dateKey, todayDateInput, setPaperWidth, printDocument } from "./store.js";
+import { getState, updateState, updateStateAsync, subscribe, renderStaffShell, escapeHtml, money, makeId, formatTime, dateKey, todayDateInput, setPaperWidth, printDocument } from "./store.js";
 
 renderStaffShell("register");
 let selectedTable = 1;
 let activeTab = "checkout";
+let paymentInProgress = false;
 const paperSelect = document.querySelector("#paper-width");
 paperSelect.value = getState().settings.paperWidth || "80";
 setPaperWidth(paperSelect.value);
@@ -54,6 +55,8 @@ function renderCheckout(state) {
     return;
   }
   const subtotal = orders.reduce((sum, order) => sum + order.subtotal, 0);
+  const sessionId = state.sessions.find((session) => session.table === selectedTable && session.status === "Active")?.sessionId
+    || orders.find((order) => order.sessionId)?.sessionId;
   root.innerHTML = `<div class="panel-heading"><div><span class="eyebrow">CHECKOUT</span><h2>テーブル ${selectedTable}</h2></div><span class="badge text-bg-light">${orders.length}件の注文</span></div>${orders.map((order) => `<div class="checkout-line"><div><strong>${escapeHtml(order.items.map((item) => `${item.name} × ${item.quantity}`).join("、"))}</strong><small class="d-block muted">${formatTime(order.createdAt)} ・ ${escapeHtml({ pending: "受付済み", preparing: "調理中", ready: "できあがり", served: "提供済み" }[order.status] || order.status)}</small></div><strong>${money(order.subtotal)}</strong></div>`).join("")}<div class="discount-row"><span>割引</span><input id="discount-value" class="form-control" type="number" min="0" step="1" value="0"><select id="discount-mode" class="form-select" style="max-width:95px"><option value="yen">円</option><option value="percent">%</option></select><span class="muted">合計から値引き</span></div><div class="total-row"><span>お会計</span><strong id="checkout-total">${money(subtotal)}</strong></div><div id="cash-payment" class="cash-payment"><label for="cash-received" class="form-label">お預かり金額</label><input id="cash-received" class="form-control" type="number" min="0" step="1" value="${subtotal}"><div class="total-row"><span>お釣り</span><strong id="cash-change" aria-live="polite">${money(0)}</strong></div><p id="cash-shortage" class="feedback mb-0" role="status"></p></div><div class="payment-row"><select id="payment-method" class="form-select"><option value="現金">現金</option><option value="PayPay">PayPay</option><option value="クレジット">クレジット</option></select><button id="complete-payment" class="btn btn-primary">会計を完了</button></div>${receipt ? `<p class="feedback mt-3 mb-0">領収書宛名: ${escapeHtml(receipt.name)}</p>` : ""}`;
   const discountValue = root.querySelector("#discount-value");
   const discountMode = root.querySelector("#discount-mode");
@@ -74,7 +77,7 @@ function renderCheckout(state) {
     root.querySelector("#cash-shortage").textContent = insufficientCash && Number.isInteger(received)
       ? `あと ${money(total - received)} 不足しています。`
       : "";
-    completePayment.disabled = insufficientCash;
+    completePayment.disabled = insufficientCash || paymentInProgress;
     return discount;
   };
   discountValue.addEventListener("input", calculate);
@@ -82,13 +85,15 @@ function renderCheckout(state) {
   cashReceived.addEventListener("input", calculate);
   paymentMethod.addEventListener("change", calculate);
   calculate();
-  completePayment.addEventListener("click", () => {
+  completePayment.addEventListener("click", async () => {
     const discount = calculate();
+    if (completePayment.disabled) return;
     const method = root.querySelector("#payment-method").value;
     const paidAt = new Date().toISOString();
     const payment = {
       id: makeId("payment"),
       table: selectedTable,
+      ...(sessionId ? { sessionId } : {}),
       paidAt,
       subtotal,
       discount,
@@ -98,17 +103,38 @@ function renderCheckout(state) {
       orders: orders.map((order) => order.id),
       items: orders.flatMap((order) => order.items.map((item) => ({ ...item })))
     };
-    updateState((current) => {
+    paymentInProgress = true;
+    completePayment.disabled = true;
+    try {
+      await updateStateAsync((current) => {
+      const session = current.sessions.find((entry) => entry.table === payment.table && entry.status === "Active");
+      if (session && session.sessionId !== payment.sessionId) {
+        throw new Error("注文セッションが更新されました。テーブルを選び直してください。");
+      }
       for (const id of payment.orders) {
         const order = current.orders.find((entry) => entry.id === id);
         if (!order || order.paid) throw new Error("注文状態が更新されました。テーブルを選び直してください。");
-        order.paid = true;
-        order.paidAt = paidAt;
-      }
-      current.payments.unshift(payment);
-      current.calls.forEach((call) => { if (call.table === selectedTable) call.resolved = true; });
-    });
-    render(getState());
+          if (payment.sessionId && order.sessionId && order.sessionId !== payment.sessionId) {
+            throw new Error("注文セッションが更新されました。テーブルを選び直してください。");
+          }
+          order.paid = true;
+          order.paidAt = paidAt;
+        }
+        if (session) {
+          session.status = "Completed";
+          session.completedAt = paidAt;
+        }
+        current.payments.unshift(payment);
+        current.calls.forEach((call) => { if (call.table === payment.table) call.resolved = true; });
+      });
+    } catch (error) {
+      console.error("Could not complete payment.", error);
+      window.alert(error instanceof Error ? error.message : "会計を保存できませんでした。通信状況を確認してください。");
+      return;
+    } finally {
+      paymentInProgress = false;
+      render(getState());
+    }
     showReceipt(payment);
   });
 }

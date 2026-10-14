@@ -53,6 +53,12 @@ A lightweight static restaurant ordering demo built with HTML5, Bootstrap 5, and
 
 Firebase Authentication: enable the Anonymous sign-in provider in the Firebase console under Authentication > Sign-in method. All pages using `js/store.js` automatically sign in before accessing the Realtime Database. If authentication fails, the error is logged and the app uses browser-only storage with the existing realtime-sync warning.
 
+Ordering hours (Asia/Tokyo): Monday-Friday 11:00-15:00; Saturday-Sunday 11:00-23:00. Opening time is inclusive, closing time is exclusive. Outside these hours, customers can view menus and existing orders but cannot add or submit orders. Kitchen queue limits and manual pauses still apply.
+
+Customer orders are grouped by table and a shared session ID. Reloading the customer page or scanning its QR code reuses the table's active session, so unpaid orders continue to display until checkout. Completing checkout marks that session `Completed`; the next QR scan or page load creates a new session ID. New orders and payments record their session ID. This lifecycle is shared through Firebase when available and otherwise across tabs in the same browser.
+
+After receiving a successfully saved payment, an open kitchen page waits 10 seconds, then plays "ありがとうございました。" twice with a one-second pause between utterances using Web Speech API. Enable kitchen audio with the sound button/toggle (browser user interaction is required). Historical payments are not replayed when the kitchen page opens; payments received while sound is off wait until sound is enabled. Cross-device notifications require working Firebase sync; browser-only fallback syncs tabs on the same browser.
+
 Views
 View	File
 Customer ordering	index.html?table=<1-40> (e.g. index.html?table=3)
@@ -1636,5 +1642,3 @@ const analytics = getAnalytics(app);
 注: このオプションではモジュラー JavaScript SDK を使用します。これにより SDK のサイズが小さくなります。
 
 ウェブ向け Firebase の詳細については、こちらをご覧ください: 使ってみる、 ウェブ SDK API リファレンス、 サンプル
-
-

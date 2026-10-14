@@ -1,4 +1,5 @@
 import menuSeed from "../data/menu.json" with { type: "json" };
+import { getBusinessHoursStatus } from "./ordering.js";
 
 const STORAGE_KEY = "ajimaru-pos-demo-v1";
 const CHANNEL_NAME = "ajimaru-pos-demo";
@@ -12,6 +13,7 @@ function initialState() {
     version: 1,
     menu: structuredClone(menuSeed),
     orders: [],
+    sessions: [],
     payments: [],
     expenses: [],
     calls: [],
@@ -29,7 +31,7 @@ let runRemoteTransaction = null;
 
 function normalizeState(raw) {
   const state = raw && typeof raw === "object" ? raw : initialState();
-  for (const key of ["menu", "orders", "payments", "expenses", "calls", "announcements", "printedKitchenOrderIds"]) {
+  for (const key of ["menu", "orders", "sessions", "payments", "expenses", "calls", "announcements", "printedKitchenOrderIds"]) {
     state[key] = Array.isArray(state[key]) ? state[key].filter(Boolean) : Object.values(state[key] || {});
   }
   if (Array.isArray(state.receipts)) {
@@ -115,12 +117,14 @@ export function getOrderingStatus(state = getState(), now = Date.now()) {
   const manualPauseUntil = Number.isFinite(storedPauseUntil) ? storedPauseUntil : 0;
   const manuallyPaused = manualPauseUntil > now;
   const automaticallyPaused = activeOrders >= ORDER_QUEUE_LIMIT;
+  const outsideBusinessHours = !getBusinessHoursStatus(now).open;
   return {
     activeOrders,
     manualPauseUntil,
     manuallyPaused,
     automaticallyPaused,
-    paused: manuallyPaused || automaticallyPaused
+    outsideBusinessHours,
+    paused: manuallyPaused || automaticallyPaused || outsideBusinessHours
   };
 }
 

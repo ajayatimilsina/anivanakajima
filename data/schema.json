@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ajimaru local POS demo state",
   "type": "object",
-  "required": ["version", "menu", "orders", "payments", "expenses", "calls", "receipts", "announcements", "settings"],
+  "required": ["version", "menu", "orders", "sessions", "payments", "expenses", "calls", "receipts", "announcements", "settings"],
   "properties": {
     "version": { "const": 1 },
     "menu": {
@@ -49,6 +49,7 @@
         "properties": {
           "id": { "type": "string" },
           "table": { "type": "integer", "minimum": 1, "maximum": 40 },
+          "sessionId": { "type": "string" },
           "createdAt": { "type": "string", "format": "date-time" },
           "status": { "enum": ["pending", "preparing", "ready", "served"] },
           "items": { "$ref": "#/$defs/orderItemList" },
@@ -56,6 +57,20 @@
           "paid": { "type": "boolean" },
           "paidAt": { "type": "string", "format": "date-time" },
           "note": { "type": "string" }
+        }
+      }
+    },
+    "sessions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["table", "sessionId", "status", "startedAt"],
+        "properties": {
+          "table": { "type": "integer", "minimum": 1, "maximum": 40 },
+          "sessionId": { "type": "string" },
+          "status": { "enum": ["Active", "Completed"] },
+          "startedAt": { "type": "integer", "minimum": 0 },
+          "completedAt": { "type": "string", "format": "date-time" }
         }
       }
     },
@@ -67,6 +82,7 @@
         "properties": {
           "id": { "type": "string" },
           "table": { "type": "integer", "minimum": 1, "maximum": 40 },
+          "sessionId": { "type": "string" },
           "paidAt": { "type": "string", "format": "date-time" },
           "subtotal": { "type": "integer", "minimum": 0 },
           "discount": { "type": "integer", "minimum": 0 },

@@ -1,10 +1,15 @@
 import { getState, getOrderingStatus, updateState, subscribe, renderStaffShell, escapeHtml, money, formatTime, makeId, printDocument, ORDER_PAUSE_DURATION_MS } from "./store.js";
+import { BUSINESS_HOURS_LABEL } from "./ordering.js";
 
 renderStaffShell("kitchen");
 const root = document.querySelector("#kitchen-orders");
 let soundEnabled = getState().settings.sound;
 let autoPrintEnabled = getState().settings.kitchenAutoPrint !== false;
 const knownOrderIds = new Set(getState().orders.map((order) => order.id));
+const knownPaymentIds = new Set(getState().payments.map((payment) => payment.id));
+const paymentAudioQueue = [];
+let paymentAudioBusy = false;
+let paymentAudioTimer = null;
 const soundToggle = document.querySelector("#sound-toggle");
 soundToggle.checked = soundEnabled;
 const autoPrintToggle = document.querySelector("#auto-print-toggle");
@@ -30,7 +35,11 @@ function renderOrderingControls(state = getState()) {
   const status = getOrderingStatus(state);
   const summary = document.querySelector("#ordering-status-summary");
   const button = document.querySelector("#toggle-order-pause");
-  if (status.automaticallyPaused) {
+  if (status.outsideBusinessHours) {
+    summary.textContent = `営業時間外：${BUSINESS_HOURS_LABEL}`;
+    button.textContent = "営業時間外";
+    button.disabled = true;
+  } else if (status.automaticallyPaused) {
     summary.textContent = "自動停止中：注文数が上限に達しました（10件以上）。";
     button.textContent = "混雑のため自動停止中";
     button.disabled = true;
@@ -121,7 +130,56 @@ function printOrder(orderId) {
   printRoot.remove();
 }
 
+function playNextPaymentNotification() {
+  if (paymentAudioBusy || paymentAudioTimer !== null || !soundEnabled || !paymentAudioQueue.length) return;
+  if (!("speechSynthesis" in window)) {
+    console.error("Payment audio notifications require Web Speech API.");
+    window.alert("このブラウザでは会計完了の音声通知を利用できません。");
+    paymentAudioQueue.length = 0;
+    return;
+  }
+  const payment = paymentAudioQueue[0];
+  const delay = Math.max(0, payment.receivedAt + 10_000 - Date.now());
+  paymentAudioTimer = window.setTimeout(() => {
+    paymentAudioTimer = null;
+    if (!soundEnabled) return;
+    paymentAudioBusy = true;
+    paymentAudioQueue.shift();
+    let completedUtterances = 0;
+    const finishUtterance = () => {
+      completedUtterances += 1;
+      if (completedUtterances === 1) {
+        window.setTimeout(speakThanks, 1_000);
+      } else {
+        paymentAudioBusy = false;
+        playNextPaymentNotification();
+      }
+    };
+    const speakThanks = () => {
+      const utterance = new SpeechSynthesisUtterance("ありがとうございました。");
+      utterance.lang = "ja-JP";
+      const voice = window.speechSynthesis.getVoices().find((entry) => entry.lang?.replace("_", "-").startsWith("ja"));
+      if (voice) utterance.voice = voice;
+      utterance.onend = finishUtterance;
+      utterance.onerror = (event) => {
+        console.error("Could not play payment audio notification.", event.error);
+        finishUtterance();
+      };
+      window.speechSynthesis.resume();
+      window.speechSynthesis.speak(utterance);
+    };
+    speakThanks();
+  }, delay);
+}
+
 subscribe((state) => {
+  const newPayments = state.payments.filter((payment) => !knownPaymentIds.has(payment.id));
+  newPayments.sort((left, right) => Date.parse(left.paidAt) - Date.parse(right.paidAt));
+  newPayments.forEach((payment) => {
+    knownPaymentIds.add(payment.id);
+    paymentAudioQueue.push({ id: payment.id, receivedAt: Date.now() });
+  });
+  playNextPaymentNotification();
   const newOrders = state.orders.filter((order) => !knownOrderIds.has(order.id));
   newOrders.forEach((order) => knownOrderIds.add(order.id));
   if (newOrders.length) {
@@ -155,7 +213,7 @@ window.setInterval(() => renderOrderingControls(), 1000);
 document.querySelector("#toggle-order-pause").addEventListener("click", () => {
   updateState((state) => {
     const status = getOrderingStatus(state);
-    if (status.automaticallyPaused) return;
+    if (status.automaticallyPaused || status.outsideBusinessHours) return;
     state.settings.orderingPausedUntil = status.manuallyPaused ? 0 : Date.now() + ORDER_PAUSE_DURATION_MS;
   });
 });
@@ -169,10 +227,12 @@ document.querySelector("#enable-sound").addEventListener("click", async () => {
   soundEnabled = true;
   soundToggle.checked = true;
   updateState((state) => { state.settings.sound = true; });
+  playNextPaymentNotification();
 });
 soundToggle.addEventListener("change", () => {
   soundEnabled = soundToggle.checked;
   updateState((state) => { state.settings.sound = soundEnabled; });
+  playNextPaymentNotification();
 });
 autoPrintToggle.addEventListener("change", () => {
   autoPrintEnabled = autoPrintToggle.checked;

@@ -1,9 +1,32 @@
 import { getState, getOrderingStatus, updateState, updateStateAsync, subscribe, escapeHtml, money, makeId, formatTime, isOrderable } from "./store.js";
+import { BUSINESS_HOURS_LABEL, ensureCustomerSession } from "./ordering.js";
 
 const params = new URLSearchParams(location.search);
 const requestedTable = Number(params.get("table") || 1);
 const table = Number.isInteger(requestedTable) && requestedTable >= 1 && requestedTable <= 40 ? requestedTable : 1;
 const tableLabel = `テーブル ${table}`;
+let customerSession;
+try {
+  const newSessionId = makeId("session");
+  await updateStateAsync((state) => {
+    ensureCustomerSession(state, table, newSessionId);
+  });
+  customerSession = getState().sessions.find((session) => session.sessionId === newSessionId)
+    || getState().sessions.find((session) => session.table === table && session.status === "Active");
+  if (!customerSession?.sessionId || customerSession.status !== "Active") {
+    throw new Error("注文セッションを開始できませんでした。ページを再読み込みしてください。");
+  }
+} catch (error) {
+  console.error("Could not initialize customer session.", error);
+  window.alert("注文セッションを開始できません。通信状況を確認してページを再読み込みしてください。");
+  throw error;
+}
+
+function getCustomerOrderingStatus(state = getState(), now = Date.now()) {
+  const status = getOrderingStatus(state, now);
+  const sessionCompleted = state.sessions.find((session) => session.sessionId === customerSession.sessionId)?.status !== "Active";
+  return { ...status, sessionCompleted, paused: status.paused || sessionCompleted };
+}
 const cart = [];
 let selectedCategory = "すべて";
 let modalItemId = null;
@@ -16,7 +39,7 @@ itemModal = new bootstrap.Modal(document.querySelector("#item-modal"));
 cartModal = new bootstrap.Modal(document.querySelector("#cart-modal"));
 
 function renderMenu(state = getState()) {
-  const orderingPaused = getOrderingStatus(state).paused;
+  const orderingPaused = getCustomerOrderingStatus(state).paused;
   const categories = ["すべて", ...new Set(state.menu.map((item) => item.category))];
   const categoriesRoot = document.querySelector("#categories");
   categoriesRoot.innerHTML = categories.map((category) => `<button class="category-chip ${selectedCategory === category ? "active" : ""}" data-category="${escapeHtml(category)}">${escapeHtml(category)}</button>`).join("");
@@ -33,12 +56,18 @@ function renderMenu(state = getState()) {
 }
 
 function renderOrderingStatus(state = getState()) {
-  const status = getOrderingStatus(state);
+  const status = getCustomerOrderingStatus(state);
+  const sessionStatus = document.querySelector("#session-status");
+  sessionStatus.textContent = `テーブル ${table} ・ セッション ${customerSession.sessionId} ・ ${BUSINESS_HOURS_LABEL}`;
   const banner = document.querySelector("#ordering-status");
   banner.hidden = !status.paused;
   banner.classList.toggle("ordering-status-busy", status.automaticallyPaused);
   banner.classList.toggle("ordering-status-manual", !status.automaticallyPaused && status.manuallyPaused);
-  if (status.automaticallyPaused) {
+  if (status.sessionCompleted) {
+    banner.innerHTML = `<strong>お会計が完了しました。</strong><span>新しいご注文は、ページを再読み込みするかテーブルのQRコードを再スキャンしてください。</span>`;
+  } else if (status.outsideBusinessHours) {
+    banner.innerHTML = `<strong>営業時間外のため注文できません。</strong><span>${BUSINESS_HOURS_LABEL}</span>`;
+  } else if (status.automaticallyPaused) {
     banner.innerHTML = `<strong>キッチンが混み合っています。</strong><span>未会計・未提供の注文が <b>${status.activeOrders}</b> 件あるため、新しい注文を一時停止しています。</span>`;
   } else if (status.manuallyPaused) {
     banner.innerHTML = `<strong>キッチンが注文受付を一時停止しています。</strong><span>注文再開まで3分ほどお待ちください。</span>`;
@@ -58,7 +87,7 @@ function renderCartSummary() {
 }
 
 function showItem(item) {
-  if (getOrderingStatus().paused) {
+  if (getCustomerOrderingStatus().paused) {
     renderOrderingStatus();
     return;
   }
@@ -68,7 +97,7 @@ function showItem(item) {
   document.querySelector("#item-modal .modal-content").innerHTML = `<div class="modal-header"><div><span class="eyebrow">${escapeHtml(item.category)}</span><h2 class="modal-title fs-5">${escapeHtml(item.name)}</h2></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button></div><div class="modal-body"><p class="mb-2">基本価格 <strong>${money(item.price)}</strong></p>${choices || `<p class="muted mb-0">オプションはありません。</p>`}<label class="form-label mt-3">数量</label><input id="item-quantity" class="form-control" type="number" min="1" max="${Math.min(20, item.stock)}" value="1"></div><div class="modal-footer"><button id="add-to-cart" class="btn btn-primary">カートに追加</button></div>`;
   document.querySelector("#add-to-cart").addEventListener("click", () => {
     const state = getState();
-    if (getOrderingStatus(state).paused) {
+    if (getCustomerOrderingStatus(state).paused) {
       renderOrderingStatus(state);
       itemModal.hide();
       return;
@@ -119,7 +148,7 @@ function renderCart() {
   }));
   document.querySelector("#send-order").addEventListener("click", async () => {
     const state = getState();
-    if (getOrderingStatus(state).paused) {
+    if (getCustomerOrderingStatus(state).paused) {
       renderOrderingStatus(state);
       return;
     }
@@ -137,6 +166,7 @@ function renderCart() {
     const order = {
       id: makeId("order"),
       table,
+      sessionId: customerSession.sessionId,
       createdAt: now,
       status: "pending",
       note: document.querySelector("#order-note").value.trim(),
@@ -145,7 +175,13 @@ function renderCart() {
     };
     try {
       await updateStateAsync((next) => {
-        if (getOrderingStatus(next).paused) throw new Error("注文受付を一時停止中です。時間をおいて再度お試しください。");
+        const status = getCustomerOrderingStatus(next);
+        const activeSession = next.sessions.find((session) => session.table === table);
+        if (activeSession?.status !== "Active" || activeSession.sessionId !== customerSession.sessionId) {
+          throw new Error("このセッションのお会計は完了しています。ページを再読み込みして新しいセッションを開始してください。");
+        }
+        if (status.outsideBusinessHours) throw new Error(`営業時間外のため注文できません。${BUSINESS_HOURS_LABEL}`);
+        if (status.paused) throw new Error("注文受付を一時停止中です。時間をおいて再度お試しください。");
         for (const line of order.items) {
           const item = next.menu.find((menuItem) => menuItem.id === line.itemId);
           if (!item || !isOrderable(item) || item.stock < line.quantity) throw new Error(`${line.name}の在庫が不足しています。`);
@@ -262,7 +298,7 @@ document.querySelector("#categories").addEventListener("click", (event) => {
 });
 document.querySelector("#menu-list").addEventListener("click", (event) => {
   const button = event.target.closest("[data-add-item]");
-  if (!button || button.disabled || getOrderingStatus().paused) {
+  if (!button || button.disabled || getCustomerOrderingStatus().paused) {
     renderOrderingStatus();
     return;
   }
@@ -290,18 +326,18 @@ renderMenu();
 renderTableOrders();
 renderCartSummary();
 announceReadyOrders(getState());
-let wasOrderingPaused = getOrderingStatus().paused;
+let wasOrderingPaused = getCustomerOrderingStatus().paused;
 renderOrderingStatus();
 subscribe((state) => {
   announceReadyOrders(state);
   renderMenu(state);
   renderTableOrders(state);
   renderOrderingStatus(state);
-  wasOrderingPaused = getOrderingStatus(state).paused;
+  wasOrderingPaused = getCustomerOrderingStatus(state).paused;
 });
 window.setInterval(() => {
   const state = getState();
-  const paused = getOrderingStatus(state).paused;
+  const paused = getCustomerOrderingStatus(state).paused;
   renderOrderingStatus(state);
   if (paused !== wasOrderingPaused) renderMenu(state);
   wasOrderingPaused = paused;
