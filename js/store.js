@@ -52,10 +52,13 @@ async function connectRemote() {
     import(`${base}/firebase-app.js`), import(`${base}/firebase-auth.js`), import(`${base}/firebase-database.js`)
   ]);
   const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
   try {
-    await signInAnonymously(getAuth(app));
+    await signInAnonymously(auth);
+    console.log("匿名認証に成功しました。Databaseにアクセス可能です。");
   } catch (error) {
-    console.warn("Anonymous auth unavailable; trying without auth.", error.code);
+    console.error("認証エラー:", error);
+    throw error;
   }
   const ref = db.ref(db.getDatabase(app), STATE_PATH);
   const first = await Promise.race([
