@@ -7,32 +7,20 @@ const vm = require("node:vm");
 const read = (name) => readFileSync(path.join(__dirname, "..", "js", name), "utf8").replaceAll("\r\n", "\n");
 const ordering = vm.createContext({ Intl });
 vm.runInContext(read("ordering.js").replaceAll("export ", ""), ordering);
-const businessStatus = ordering.getBusinessHoursStatus;
 const { ensureCustomerSession } = ordering;
 
-test("Japan business hours include opening and exclude closing on all seven days", () => {
-  for (let day = 12; day <= 18; day++) {
-    const date = `2026-10-${day}`;
-    const closingHour = day >= 17 ? 23 : 15;
-    for (const [time, open] of [
-      ["10:59:59", false], ["11:00:00", true],
-      [`${closingHour - 1}:59:59`, true], [`${closingHour}:00:00`, false],
-      ["23:59:59", false], ["00:00:00", false]
-    ]) {
-      assert.equal(businessStatus(Date.parse(`${date}T${time}+09:00`)).open, open, `${date} ${time}`);
-    }
-  }
-  assert.equal(businessStatus(Date.parse("2026-10-12T02:00:00Z")).open, true);
-});
-
-test("existing queue limit and manual pause compose with business hours", () => {
+test("manual pause and queue limit control ordering regardless of time", () => {
   const source = read("store.js");
   const fn = source.slice(source.indexOf("export function getOrderingStatus"), source.indexOf("export function updateState("));
-  const context = vm.createContext({ getBusinessHoursStatus: businessStatus, ORDER_QUEUE_LIMIT: 10 });
+  const context = vm.createContext({ ORDER_QUEUE_LIMIT: 10 });
   vm.runInContext(fn.replace("export ", ""), context);
-  const now = Date.parse("2026-10-12T12:00:00+09:00");
   const state = { orders: [], settings: {} };
-  assert.equal(context.getOrderingStatus(state, now).paused, false);
+  for (const time of ["2026-10-12T02:00:00Z", "2026-10-12T12:00:00+09:00", "2026-10-12T23:30:00+09:00"]) {
+    const status = context.getOrderingStatus(state, Date.parse(time));
+    assert.equal(status.paused, false, time);
+    assert.equal("outsideBusinessHours" in status, false);
+  }
+  const now = Date.parse("2026-10-12T12:00:00+09:00");
   state.settings.orderingPausedUntil = now + 1000;
   assert.equal(context.getOrderingStatus(state, now).paused, true);
   assert.equal(context.getOrderingStatus(state, now + 1000).paused, false);
@@ -41,7 +29,6 @@ test("existing queue limit and manual pause compose with business hours", () => 
   assert.equal(context.getOrderingStatus(state, now).automaticallyPaused, true);
   state.orders[0].paid = true;
   assert.equal(context.getOrderingStatus(state, now).paused, false);
-  assert.equal(context.getOrderingStatus(state, Date.parse("2026-10-12T15:00:00+09:00")).outsideBusinessHours, true);
 });
 
 test("customer sessions survive reload and rotate only after checkout", () => {
@@ -70,13 +57,13 @@ test("customer session adopts legacy unpaid table orders", () => {
   assert.equal(state.orders[0].sessionId, "session-migrated");
 });
 
-test("order transaction rechecks the active session and business hours before changing stock", () => {
+test("order transaction rechecks the active session and pause status before changing stock", () => {
   const source = read("customer.js");
   const callback = source.split("await updateStateAsync((next) => {")[1].split("\n      });")[0];
   const order = { sessionId: "active", items: [{ itemId: 1, quantity: 1 }] };
   const context = vm.createContext({
-    order, table: 3, customerSession: { sessionId: "active" }, BUSINESS_HOURS_LABEL: "hours", isOrderable: () => true,
-    getCustomerOrderingStatus: () => ({ paused: false, outsideBusinessHours: false })
+    order, table: 3, customerSession: { sessionId: "active" }, isOrderable: () => true,
+    getCustomerOrderingStatus: () => ({ paused: false })
   });
   vm.runInContext(`function submit(next) { ${callback} }`, context);
   const state = { menu: [{ id: 1, stock: 2 }], orders: [], sessions: [{ table: 3, sessionId: "active", status: "Completed" }] };
@@ -87,8 +74,6 @@ test("order transaction rechecks the active session and business hours before ch
   assert.throws(() => context.submit(state), /セッション/);
   assert.equal(state.menu[0].stock, 2);
   state.sessions[0].sessionId = "active";
-  context.getCustomerOrderingStatus = () => ({ outsideBusinessHours: true });
-  assert.throws(() => context.submit(state));
   context.getCustomerOrderingStatus = () => ({ paused: false });
   context.submit(state);
   assert.equal(state.menu[0].stock, 1);

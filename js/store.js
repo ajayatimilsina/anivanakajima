@@ -1,5 +1,4 @@
 import menuSeed from "../data/menu.json" with { type: "json" };
-import { getBusinessHoursStatus } from "./ordering.js";
 
 const STORAGE_KEY = "ajimaru-pos-demo-v1";
 const CHANNEL_NAME = "ajimaru-pos-demo";
@@ -117,14 +116,12 @@ export function getOrderingStatus(state = getState(), now = Date.now()) {
   const manualPauseUntil = Number.isFinite(storedPauseUntil) ? storedPauseUntil : 0;
   const manuallyPaused = manualPauseUntil > now;
   const automaticallyPaused = activeOrders >= ORDER_QUEUE_LIMIT;
-  const outsideBusinessHours = !getBusinessHoursStatus(now).open;
   return {
     activeOrders,
     manualPauseUntil,
     manuallyPaused,
     automaticallyPaused,
-    outsideBusinessHours,
-    paused: manuallyPaused || automaticallyPaused || outsideBusinessHours
+    paused: manuallyPaused || automaticallyPaused
   };
 }
 

@@ -1,5 +1,4 @@
 import { getState, getOrderingStatus, updateState, subscribe, renderStaffShell, escapeHtml, money, formatTime, makeId, printDocument, ORDER_PAUSE_DURATION_MS } from "./store.js";
-import { BUSINESS_HOURS_LABEL } from "./ordering.js";
 
 renderStaffShell("kitchen");
 const root = document.querySelector("#kitchen-orders");
@@ -35,11 +34,7 @@ function renderOrderingControls(state = getState()) {
   const status = getOrderingStatus(state);
   const summary = document.querySelector("#ordering-status-summary");
   const button = document.querySelector("#toggle-order-pause");
-  if (status.outsideBusinessHours) {
-    summary.textContent = `営業時間外：${BUSINESS_HOURS_LABEL}`;
-    button.textContent = "営業時間外";
-    button.disabled = true;
-  } else if (status.automaticallyPaused) {
+  if (status.automaticallyPaused) {
     summary.textContent = "自動停止中：注文数が上限に達しました（10件以上）。";
     button.textContent = "混雑のため自動停止中";
     button.disabled = true;
@@ -213,7 +208,7 @@ window.setInterval(() => renderOrderingControls(), 1000);
 document.querySelector("#toggle-order-pause").addEventListener("click", () => {
   updateState((state) => {
     const status = getOrderingStatus(state);
-    if (status.automaticallyPaused || status.outsideBusinessHours) return;
+    if (status.automaticallyPaused) return;
     state.settings.orderingPausedUntil = status.manuallyPaused ? 0 : Date.now() + ORDER_PAUSE_DURATION_MS;
   });
 });

@@ -1,5 +1,5 @@
 import { getState, getOrderingStatus, updateState, updateStateAsync, subscribe, escapeHtml, money, makeId, formatTime, isOrderable } from "./store.js";
-import { BUSINESS_HOURS_LABEL, ensureCustomerSession } from "./ordering.js";
+import { ensureCustomerSession } from "./ordering.js";
 
 const params = new URLSearchParams(location.search);
 const requestedTable = Number(params.get("table") || 1);
@@ -58,15 +58,13 @@ function renderMenu(state = getState()) {
 function renderOrderingStatus(state = getState()) {
   const status = getCustomerOrderingStatus(state);
   const sessionStatus = document.querySelector("#session-status");
-  sessionStatus.textContent = `テーブル ${table} ・ セッション ${customerSession.sessionId} ・ ${BUSINESS_HOURS_LABEL}`;
+  sessionStatus.textContent = `テーブル ${table} ・ セッション ${customerSession.sessionId}`;
   const banner = document.querySelector("#ordering-status");
   banner.hidden = !status.paused;
   banner.classList.toggle("ordering-status-busy", status.automaticallyPaused);
   banner.classList.toggle("ordering-status-manual", !status.automaticallyPaused && status.manuallyPaused);
   if (status.sessionCompleted) {
     banner.innerHTML = `<strong>お会計が完了しました。</strong><span>新しいご注文は、ページを再読み込みするかテーブルのQRコードを再スキャンしてください。</span>`;
-  } else if (status.outsideBusinessHours) {
-    banner.innerHTML = `<strong>営業時間外のため注文できません。</strong><span>${BUSINESS_HOURS_LABEL}</span>`;
   } else if (status.automaticallyPaused) {
     banner.innerHTML = `<strong>キッチンが混み合っています。</strong><span>未会計・未提供の注文が <b>${status.activeOrders}</b> 件あるため、新しい注文を一時停止しています。</span>`;
   } else if (status.manuallyPaused) {
@@ -180,7 +178,6 @@ function renderCart() {
         if (activeSession?.status !== "Active" || activeSession.sessionId !== customerSession.sessionId) {
           throw new Error("このセッションのお会計は完了しています。ページを再読み込みして新しいセッションを開始してください。");
         }
-        if (status.outsideBusinessHours) throw new Error(`営業時間外のため注文できません。${BUSINESS_HOURS_LABEL}`);
         if (status.paused) throw new Error("注文受付を一時停止中です。時間をおいて再度お試しください。");
         for (const line of order.items) {
           const item = next.menu.find((menuItem) => menuItem.id === line.itemId);
