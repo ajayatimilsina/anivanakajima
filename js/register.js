@@ -55,10 +55,6 @@ function renderCheckout(state) {
     return;
   }
   const subtotal = orders.reduce((sum, order) => sum + order.subtotal, 0);
-  const activeSessions = state.sessions.filter((session) => session.table === selectedTable && session.status === "Active");
-  const sessionId = orders.find((order) => order.sessionId && activeSessions.some((session) => session.sessionId === order.sessionId))?.sessionId
-    || activeSessions.find((session) => typeof session.sessionId === "string" && session.sessionId)?.sessionId
-    || orders.find((order) => order.sessionId)?.sessionId;
   root.innerHTML = `<div class="panel-heading"><div><span class="eyebrow">CHECKOUT</span><h2>テーブル ${selectedTable}</h2></div><span class="badge text-bg-light">${orders.length}件の注文</span></div>${orders.map((order) => `<div class="checkout-line"><div><strong>${escapeHtml(order.items.map((item) => `${item.name} × ${item.quantity}`).join("、"))}</strong><small class="d-block muted">${formatTime(order.createdAt)} ・ ${escapeHtml({ pending: "受付済み", preparing: "調理中", ready: "できあがり", served: "提供済み" }[order.status] || order.status)}</small></div><strong>${money(order.subtotal)}</strong></div>`).join("")}<div class="discount-row"><span>割引</span><input id="discount-value" class="form-control" type="number" min="0" step="1" value="0"><select id="discount-mode" class="form-select" style="max-width:95px"><option value="yen">円</option><option value="percent">%</option></select><span class="muted">合計から値引き</span></div><div class="total-row"><span>お会計</span><strong id="checkout-total">${money(subtotal)}</strong></div><div id="cash-payment" class="cash-payment"><label for="cash-received" class="form-label">お預かり金額</label><input id="cash-received" class="form-control" type="number" min="0" step="1" value="${subtotal}"><div class="total-row"><span>お釣り</span><strong id="cash-change" aria-live="polite">${money(0)}</strong></div><p id="cash-shortage" class="feedback mb-0" role="status"></p></div><div class="payment-row"><select id="payment-method" class="form-select"><option value="現金">現金</option><option value="PayPay">PayPay</option><option value="クレジット">クレジット</option></select><button id="complete-payment" class="btn btn-primary">会計を完了</button></div>${receipt ? `<p class="feedback mt-3 mb-0">領収書宛名: ${escapeHtml(receipt.name)}</p>` : ""}`;
   const discountValue = root.querySelector("#discount-value");
   const discountMode = root.querySelector("#discount-mode");
@@ -95,7 +91,6 @@ function renderCheckout(state) {
     const payment = {
       id: makeId("payment"),
       table: selectedTable,
-      ...(sessionId ? { sessionId } : {}),
       paidAt,
       subtotal,
       discount,
@@ -109,24 +104,12 @@ function renderCheckout(state) {
     completePayment.disabled = true;
     try {
       await updateStateAsync((current) => {
-      const sessions = current.sessions.filter((entry) => entry.table === payment.table && entry.status === "Active");
-      const session = sessions.find((entry) => entry.sessionId === payment.sessionId);
-      if (sessions.length && !session) {
-        throw new Error("注文セッションが更新されました。テーブルを選び直してください。");
-      }
-      for (const id of payment.orders) {
-        const order = current.orders.find((entry) => entry.id === id);
-        if (!order || order.paid) throw new Error("注文状態が更新されました。テーブルを選び直してください。");
-          if (payment.sessionId && order.sessionId && order.sessionId !== payment.sessionId) {
-            throw new Error("注文セッションが更新されました。テーブルを選び直してください。");
-          }
+        for (const id of payment.orders) {
+          const order = current.orders.find((entry) => entry.id === id && entry.table === payment.table);
+          if (!order || order.paid) throw new Error("注文状態が更新されました。テーブルを選び直してください。");
           order.paid = true;
           order.paidAt = paidAt;
         }
-        sessions.forEach((entry) => {
-          entry.status = "Completed";
-          entry.completedAt = paidAt;
-        });
         current.payments.unshift(payment);
         current.calls.forEach((call) => { if (call.table === payment.table) call.resolved = true; });
       });

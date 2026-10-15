@@ -5,9 +5,6 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const read = (name) => readFileSync(path.join(__dirname, "..", "js", name), "utf8").replaceAll("\r\n", "\n");
-const ordering = vm.createContext({ Intl });
-vm.runInContext(read("ordering.js").replaceAll("export ", ""), ordering);
-const { ensureCustomerSession } = ordering;
 
 test("manual pause and queue limit control ordering regardless of time", () => {
   const source = read("store.js");
@@ -31,75 +28,43 @@ test("manual pause and queue limit control ordering regardless of time", () => {
   assert.equal(context.getOrderingStatus(state, now).paused, false);
 });
 
-test("customer sessions survive reload and rotate only after checkout", () => {
-  const state = { sessions: [], orders: [] };
-  const first = ensureCustomerSession(state, 3, "session-first", 1000);
-  state.orders.push({ id: "order", table: 3, sessionId: first.sessionId, paid: false });
-  const reload = ensureCustomerSession(state, 3, "session-unused", 700000);
-  assert.equal(reload.sessionId, "session-first");
-  assert.equal(state.orders[0].sessionId, "session-first");
-  assert.equal(state.sessions.length, 1);
-
-  state.orders[0].paid = true;
-  reload.status = "Completed";
-  reload.completedAt = "2026-10-12T02:00:00.000Z";
-  const next = ensureCustomerSession(state, 3, "session-second", 800000);
-  assert.equal(next.sessionId, "session-second");
-  assert.equal(next.status, "Active");
-  assert.equal(state.sessions.length, 2);
-  assert.equal(state.sessions[0].status, "Completed");
+test("legacy session fields are discarded when shared data is normalized", () => {
+  const source = read("store.js");
+  const normalize = source.slice(source.indexOf("function normalizeState"), source.indexOf("\nasync function connectRemote"));
+  const context = vm.createContext({ initialState: () => ({}) });
+  vm.runInContext(`${normalize}\nthis.normalizeState = normalizeState;`, context);
+  const state = context.normalizeState({
+    version: 1,
+    menu: [],
+    orders: [{ table: 6, sessionId: "old-session", items: [] }],
+    sessions: [{ table: 6, sessionId: "old-session", status: "Active" }],
+    payments: [{ table: 6, sessionId: "old-session", items: [], orders: [] }]
+  });
+  assert.equal("sessions" in state, false);
+  assert.equal("sessionId" in state.orders[0], false);
+  assert.equal("sessionId" in state.payments[0], false);
 });
 
-test("customer session recovers from stale active sessions after checkout", () => {
-  const state = {
-    sessions: [
-      { table: 6, sessionId: "", status: "Active" },
-      { table: 6, sessionId: "session-paid", status: "Active" }
-    ],
-    orders: [{ table: 6, sessionId: "session-paid", paid: false }]
-  };
-  const recovered = ensureCustomerSession(state, 6, "session-new", 900000);
-  assert.equal(recovered.sessionId, "session-paid");
-  assert.equal(state.sessions[0].status, "Completed");
-  assert.equal(state.sessions[1].status, "Active");
-  assert.equal(state.orders[0].sessionId, "session-paid");
-
-  state.orders[0].paid = true;
-  recovered.status = "Completed";
-  const next = ensureCustomerSession(state, 6, "session-next", 1000000);
-  assert.equal(next.sessionId, "session-next");
-  assert.equal(next.status, "Active");
-  assert.equal(state.sessions.filter((entry) => entry.table === 6 && entry.status === "Active").length, 1);
-});
-
-test("customer session adopts legacy unpaid table orders", () => {
-  const state = { orders: [{ id: "legacy", table: 3, paid: false }] };
-  const session = ensureCustomerSession(state, 3, "session-migrated", 1000);
-  assert.equal(session.sessionId, "session-migrated");
-  assert.equal(state.orders[0].sessionId, "session-migrated");
-});
-
-test("order transaction rechecks the active session and pause status before changing stock", () => {
+test("orders are submitted per table and still respect ordering pauses", () => {
   const source = read("customer.js");
   const callback = source.split("await updateStateAsync((next) => {")[1].split("\n      });")[0];
-  const order = { sessionId: "active", items: [{ itemId: 1, quantity: 1 }] };
+  const order = { table: 3, items: [{ itemId: 1, quantity: 1 }] };
+  let paused = false;
   const context = vm.createContext({
-    order, table: 3, customerSession: { sessionId: "active" }, isOrderable: () => true,
-    getCustomerOrderingStatus: () => ({ paused: false })
+    order, table: 3, isOrderable: () => true,
+    getOrderingStatus: () => ({ paused })
   });
   vm.runInContext(`function submit(next) { ${callback} }`, context);
-  const state = { menu: [{ id: 1, stock: 2 }], orders: [], sessions: [{ table: 3, sessionId: "active", status: "Completed" }] };
-  assert.throws(() => context.submit(state), /会計は完了/);
+  const state = { menu: [{ id: 1, stock: 2 }], orders: [] };
+  paused = true;
+  assert.throws(() => context.submit(state), /一時停止/);
   assert.equal(state.menu[0].stock, 2);
-  state.sessions[0].status = "Active";
-  state.sessions[0].sessionId = "new-session";
-  assert.throws(() => context.submit(state), /セッション/);
-  assert.equal(state.menu[0].stock, 2);
-  state.sessions[0].sessionId = "active";
-  context.getCustomerOrderingStatus = () => ({ paused: false });
+  paused = false;
   context.submit(state);
   assert.equal(state.menu[0].stock, 1);
   assert.equal(state.orders.length, 1);
+  assert.equal(state.orders[0].table, 3);
+  assert.equal("sessionId" in state.orders[0], false);
 });
 
 test("kitchen deduplicates committed payments, waits ten seconds, and speaks twice one second apart", () => {
@@ -157,18 +122,14 @@ test("checkout waits for persistence, blocks repeat clicks, and reports save fai
     const receipts = [], alerts = [];
     const state = {
       receipts: {},
-      orders: [{ id: "order", items: [], sessionId: "session" }],
-      sessions: [
-        { table: 3, sessionId: "session", status: "Active" },
-        { table: 3, sessionId: "stale", status: "Active" }
-      ],
+      orders: [{ id: "order", table: 3, items: [] }],
       payments: [],
       calls: []
     };
     const button = { disabled: false, addEventListener: (event, callback) => { handler = callback; } };
     const context = vm.createContext({
       Date, Error, completePayment: button, selectedTable: 3, subtotal: 100,
-      orders: state.orders, state, sessionId: "session", makeId: () => "payment",
+      orders: state.orders, state, makeId: () => "payment",
       root: { querySelector: () => ({ value: "PayPay" }) },
       calculate: () => { button.disabled = vm.runInContext("paymentInProgress", context); return 0; },
       updateStateAsync: async (mutator) => { await save; mutator(state); },
@@ -183,8 +144,8 @@ test("checkout waits for persistence, blocks repeat clicks, and reports save fai
     if (fail) rejectSave(new Error("save failed")); else resolveSave();
     await pending;
     assert.equal(state.payments.length, fail ? 0 : 1);
-    assert.equal(state.sessions[0].status, fail ? "Active" : "Completed");
-    assert.equal(state.sessions[1].status, fail ? "Active" : "Completed");
+    assert.equal(state.orders[0].paid === true, !fail);
+    if (!fail) assert.equal("sessionId" in state.payments[0], false);
     assert.equal(receipts.length, fail ? 0 : 1);
     assert.equal(alerts.length, fail ? 1 : 0);
     assert.equal(vm.runInContext("paymentInProgress", context), false);

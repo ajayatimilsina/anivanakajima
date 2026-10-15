@@ -12,7 +12,6 @@ function initialState() {
     version: 1,
     menu: structuredClone(menuSeed),
     orders: [],
-    sessions: [],
     payments: [],
     expenses: [],
     calls: [],
@@ -30,9 +29,11 @@ let runRemoteTransaction = null;
 
 function normalizeState(raw) {
   const state = raw && typeof raw === "object" ? raw : initialState();
-  for (const key of ["menu", "orders", "sessions", "payments", "expenses", "calls", "announcements", "printedKitchenOrderIds"]) {
+  for (const key of ["menu", "orders", "payments", "expenses", "calls", "announcements", "printedKitchenOrderIds"]) {
     state[key] = Array.isArray(state[key]) ? state[key].filter(Boolean) : Object.values(state[key] || {});
   }
+  delete state.sessions;
+  for (const entry of [...state.orders, ...state.payments]) delete entry.sessionId;
   if (Array.isArray(state.receipts)) {
     state.receipts = Object.fromEntries(state.receipts.map((value, index) => [index, value]).filter(([, value]) => value));
   }
@@ -103,7 +104,12 @@ export function getState() {
     if (state.version !== 1 || !Array.isArray(state.menu) || !Array.isArray(state.orders)) {
       throw new Error("Unsupported ajimaru demo data version.");
     }
-    return state;
+    const hasLegacySessions = Object.prototype.hasOwnProperty.call(state, "sessions")
+      || [...state.orders, ...(Array.isArray(state.payments) ? state.payments : [])]
+        .some((entry) => Object.prototype.hasOwnProperty.call(entry, "sessionId"));
+    const normalized = normalizeState(state);
+    if (hasLegacySessions) localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+    return normalized;
   } catch (error) {
     console.error("Could not read saved ajimaru demo data.", error);
     throw new Error("保存データを読み込めません。ブラウザの保存データを確認してください。", { cause: error });

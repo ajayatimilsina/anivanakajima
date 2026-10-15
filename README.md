@@ -77,7 +77,7 @@ Then open http://localhost:8080/index.html?table=3.
 Open Kitchen and Register in separate tabs. Orders and status changes sync through BroadcastChannel and localStorage. This is a front-end demo store, not a production multi-device backend.
 
 Data model
-data/schema.json defines menu items, orders, and payments as JSON Schema. The example menu (including item photos) lives in js/data.js. In production, replace js/store.js with API calls and server-side persistence and authentication.
+data/schema.json defines menu items, orders, and payments as JSON Schema. Orders and checkout are managed by table; no customer session is required. The example menu (including item photos) lives in js/data.js. In production, replace js/store.js with API calls and server-side persistence and authentication.
 
 Demo flow
 Customer: open a URL with a table number, add menu items, and send the order. A kitchen ticket prints and the order appears in Register (checkout).
