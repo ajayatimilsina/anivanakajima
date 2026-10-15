@@ -119,7 +119,7 @@ function renderCart() {
   }));
   document.querySelector("#send-order").addEventListener("click", async () => {
     const state = getState();
-    if (getCustomerOrderingStatus(state).paused) {
+    if (getOrderingStatus(state).paused) {
       renderOrderingStatus(state);
       return;
     }
@@ -262,7 +262,7 @@ document.querySelector("#categories").addEventListener("click", (event) => {
 });
 document.querySelector("#menu-list").addEventListener("click", (event) => {
   const button = event.target.closest("[data-add-item]");
-  if (!button || button.disabled || getCustomerOrderingStatus().paused) {
+  if (!button || button.disabled || getOrderingStatus().paused) {
     renderOrderingStatus();
     return;
   }

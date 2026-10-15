@@ -47,6 +47,7 @@ test("legacy session fields are discarded when shared data is normalized", () =>
 
 test("orders are submitted per table and still respect ordering pauses", () => {
   const source = read("customer.js");
+  assert.doesNotMatch(source, /getCustomerOrderingStatus/);
   const callback = source.split("await updateStateAsync((next) => {")[1].split("\n      });")[0];
   const order = { table: 3, items: [{ itemId: 1, quantity: 1 }] };
   let paused = false;
