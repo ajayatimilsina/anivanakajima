@@ -60,6 +60,7 @@ Customer orders are grouped by table and a shared session ID. Reloading the cust
 After receiving a successfully saved payment, an open kitchen page waits 10 seconds, then plays "ありがとうございました。" twice with a one-second pause between utterances using Web Speech API. Enable kitchen audio with the sound button/toggle (browser user interaction is required). Historical payments are not replayed when the kitchen page opens; payments received while sound is off wait until sound is enabled. Cross-device notifications require working Firebase sync; browser-only fallback syncs tabs on the same browser.
 
 Views
+The customer page's top social bar includes YouTube (https://www.youtube.com/@japannepalnewsa) and Homepage (https://ajimaruya.com), opening in new tabs. Facebook, Instagram, TikTok, and LINE are shown as non-clickable "Coming soon" placeholders until their URLs are supplied. Update the social navigation in index.html when adding those links; do not use placeholder URLs.
 View	File
 Customer ordering	index.html?table=<1-40> (e.g. index.html?table=3)
 Single-table QR sign	table1-40-qr.html
@@ -77,6 +78,7 @@ Then open http://localhost:8080/index.html?table=3.
 Open Kitchen and Register in separate tabs. Orders and status changes sync through BroadcastChannel and localStorage. This is a front-end demo store, not a production multi-device backend.
 
 Data model
+Menu Management: edit an item and select any combination of "おすすめ", "店長のおすすめ", and "NEW" under the menu labels field. Save to display the selected badges over the item's photo in the customer menu (or over its placeholder when no photo is set). Clear all checkboxes to remove the badges. Labels do not change ordering, stock, or price.
 data/schema.json defines menu items, orders, and payments as JSON Schema. Orders and checkout are managed by table; no customer session is required. The example menu (including item photos) lives in js/data.js. In production, replace js/store.js with API calls and server-side persistence and authentication.
 
 Demo flow

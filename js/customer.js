@@ -1,4 +1,5 @@
 import { getState, getOrderingStatus, updateState, updateStateAsync, subscribe, escapeHtml, money, makeId, formatTime, isOrderable } from "./store.js";
+import { renderMenuLabels } from "./menu-labels.js";
 
 const params = new URLSearchParams(location.search);
 const requestedTable = Number(params.get("table") || 1);
@@ -28,8 +29,8 @@ function renderMenu(state = getState()) {
     const canOrder = isOrderable(item);
     const index = Math.abs(item.id) % foodIcons.length;
     const hasMenuImage = item.image?.startsWith("data:image/jpeg;base64,") || false;
-    const image = hasMenuImage ? `<img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.name)}" loading="lazy">` : foodIcons[index];
-    return `<article class="menu-card ${canOrder ? "" : "unavailable"}"><div class="menu-illustration ${hasMenuImage ? "has-menu-image" : ""}" ${hasMenuImage ? "" : 'aria-hidden="true"'}>${image}</div><div class="menu-card-body"><div><h3>${escapeHtml(item.name)}</h3><div class="muted">${escapeHtml(item.category)}</div></div><div class="menu-card-bottom"><div><span class="menu-price">${money(item.price)}</span>${item.stock < 5 && canOrder ? `<span class="stock-note"> 残りわずか</span>` : ""}${!canOrder ? `<span class="stock-note"> 欠品</span>` : ""}</div><button class="add-item" data-add-item="${item.id}" ${canOrder && !orderingPaused ? "" : "disabled"} aria-label="${escapeHtml(item.name)}を追加">+</button></div></div></article>`;
+    const image = hasMenuImage ? `<img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.name)}" loading="lazy">` : `<span aria-hidden="true">${foodIcons[index]}</span>`;
+    return `<article class="menu-card ${canOrder ? "" : "unavailable"}"><div class="menu-illustration ${hasMenuImage ? "has-menu-image" : ""}">${image}<div class="menu-labels">${renderMenuLabels(item.labels)}</div></div><div class="menu-card-body"><div><h3>${escapeHtml(item.name)}</h3><div class="muted">${escapeHtml(item.category)}</div></div><div class="menu-card-bottom"><div><span class="menu-price">${money(item.price)}</span>${item.stock < 5 && canOrder ? `<span class="stock-note"> 残りわずか</span>` : ""}${!canOrder ? `<span class="stock-note"> 欠品</span>` : ""}</div><button class="add-item" data-add-item="${item.id}" ${canOrder && !orderingPaused ? "" : "disabled"} aria-label="${escapeHtml(item.name)}を追加">+</button></div></div></article>`;
   }).join("") : `<div class="no-orders">該当するメニューがありません。</div>`;
 }
 

@@ -2,12 +2,17 @@
   const storageKey = "ajimaru-language";
   const translations = new Map(Object.entries({
     "テーブルオーダー": "Table Ordering",
+    "SNS・ホームページ": "Social Media / Homepage",
+    "準備中": "Coming soon",
     "収支管理": "Finance",
     "在庫管理": "Inventory",
     "レジ": "Register",
     "レジ・会計": "Register / POS",
     "キッチン": "Kitchen",
     "メニュー管理": "Menu Management",
+    "おすすめ": "Recommended",
+    "店長のおすすめ": "Manager's Pick",
+    "おすすめラベル（複数選択可）": "Menu Labels (multiple selections allowed)",
     "テーブルQR": "Table QR Codes",
     "QR一覧": "QR Code List",
     "スタッフ PIN": "Staff PIN",

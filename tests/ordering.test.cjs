@@ -6,6 +6,20 @@ const vm = require("node:vm");
 
 const read = (name) => readFileSync(path.join(__dirname, "..", "js", name), "utf8").replaceAll("\r\n", "\n");
 
+test("menu labels support multiple badges and omit missing, duplicate, or unsupported labels", () => {
+  const context = vm.createContext({});
+  vm.runInContext(read("menu-labels.js").replaceAll("export ", ""), context);
+  assert.equal(context.renderMenuLabels(undefined), "");
+  assert.equal(context.renderMenuLabels([]), "");
+  assert.equal(context.renderMenuLabels("new"), "");
+  assert.equal(context.renderMenuLabels(["unknown", "<script>"]), "");
+  const html = context.renderMenuLabels(["new", "manager", "recommended", "new"]);
+  assert.equal((html.match(/class="menu-label /g) || []).length, 3);
+  assert.match(html, /おすすめ/);
+  assert.match(html, /店長のおすすめ/);
+  assert.match(html, /NEW/);
+});
+
 test("manual pause and queue limit control ordering regardless of time", () => {
   const source = read("store.js");
   const fn = source.slice(source.indexOf("export function getOrderingStatus"), source.indexOf("export function updateState("));

@@ -17,6 +17,7 @@
           "price": { "type": "integer", "minimum": 0 },
           "stock": { "type": "integer", "minimum": 0 },
           "available": { "type": "boolean" },
+          "labels": { "type": "array", "items": { "enum": ["recommended", "manager", "new"] }, "uniqueItems": true },
           "options": {
             "type": "array",
             "items": {
