@@ -1,20 +1,26 @@
 export function ensureCustomerSession(state, table, sessionId, startedAt = Date.now()) {
   state.sessions ||= [];
-  const current = state.sessions.find((session) => session.table === table && session.status === "Active");
-  if (current && typeof current.sessionId === "string" && current.sessionId) {
-    return current;
-  }
-
-  const openOrder = state.orders.find((order) => order.table === table && !order.paid && order.sessionId);
-  const session = {
+  const activeSessions = state.sessions.filter((entry) => entry.table === table && entry.status === "Active");
+  const openOrders = state.orders.filter((order) => order.table === table && !order.paid);
+  const sessionForOpenOrder = activeSessions.find((entry) =>
+    typeof entry.sessionId === "string" && entry.sessionId
+    && openOrders.some((order) => order.sessionId === entry.sessionId));
+  const current = sessionForOpenOrder || activeSessions.find((entry) =>
+    typeof entry.sessionId === "string" && entry.sessionId);
+  const session = current || {
     table,
-    sessionId: openOrder?.sessionId || sessionId,
+    sessionId: openOrders.find((order) => typeof order.sessionId === "string" && order.sessionId)?.sessionId || sessionId,
     status: "Active",
-    startedAt: openOrder?.sessionStartedAt || startedAt
+    startedAt: openOrders.find((order) => order.sessionStartedAt)?.sessionStartedAt || startedAt
   };
-  state.sessions.push(session);
-  state.orders
-    .filter((order) => order.table === table && !order.paid)
-    .forEach((order) => { order.sessionId = session.sessionId; });
+  if (!current) state.sessions.push(session);
+
+  for (const duplicate of activeSessions) {
+    if (duplicate !== session) {
+      duplicate.status = "Completed";
+      duplicate.completedAt ||= new Date(startedAt).toISOString();
+    }
+  }
+  openOrders.forEach((order) => { order.sessionId = session.sessionId; });
   return session;
 }

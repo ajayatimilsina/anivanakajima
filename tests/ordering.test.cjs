@@ -50,6 +50,28 @@ test("customer sessions survive reload and rotate only after checkout", () => {
   assert.equal(state.sessions[0].status, "Completed");
 });
 
+test("customer session recovers from stale active sessions after checkout", () => {
+  const state = {
+    sessions: [
+      { table: 6, sessionId: "", status: "Active" },
+      { table: 6, sessionId: "session-paid", status: "Active" }
+    ],
+    orders: [{ table: 6, sessionId: "session-paid", paid: false }]
+  };
+  const recovered = ensureCustomerSession(state, 6, "session-new", 900000);
+  assert.equal(recovered.sessionId, "session-paid");
+  assert.equal(state.sessions[0].status, "Completed");
+  assert.equal(state.sessions[1].status, "Active");
+  assert.equal(state.orders[0].sessionId, "session-paid");
+
+  state.orders[0].paid = true;
+  recovered.status = "Completed";
+  const next = ensureCustomerSession(state, 6, "session-next", 1000000);
+  assert.equal(next.sessionId, "session-next");
+  assert.equal(next.status, "Active");
+  assert.equal(state.sessions.filter((entry) => entry.table === 6 && entry.status === "Active").length, 1);
+});
+
 test("customer session adopts legacy unpaid table orders", () => {
   const state = { orders: [{ id: "legacy", table: 3, paid: false }] };
   const session = ensureCustomerSession(state, 3, "session-migrated", 1000);
@@ -136,7 +158,10 @@ test("checkout waits for persistence, blocks repeat clicks, and reports save fai
     const state = {
       receipts: {},
       orders: [{ id: "order", items: [], sessionId: "session" }],
-      sessions: [{ table: 3, sessionId: "session", status: "Active" }],
+      sessions: [
+        { table: 3, sessionId: "session", status: "Active" },
+        { table: 3, sessionId: "stale", status: "Active" }
+      ],
       payments: [],
       calls: []
     };
@@ -159,6 +184,7 @@ test("checkout waits for persistence, blocks repeat clicks, and reports save fai
     await pending;
     assert.equal(state.payments.length, fail ? 0 : 1);
     assert.equal(state.sessions[0].status, fail ? "Active" : "Completed");
+    assert.equal(state.sessions[1].status, fail ? "Active" : "Completed");
     assert.equal(receipts.length, fail ? 0 : 1);
     assert.equal(alerts.length, fail ? 1 : 0);
     assert.equal(vm.runInContext("paymentInProgress", context), false);
