@@ -25,7 +25,7 @@ function render(state = getState()) {
 function renderCalls(state) {
   const calls = state.calls.filter((call) => !call.resolved);
   const root = document.querySelector("#register-calls");
-  root.innerHTML = calls.length ? `<div class="panel-card"><strong>スタッフ呼び出し</strong><div class="d-flex flex-wrap gap-2 mt-2">${calls.map((call) => `<button class="btn btn-warning btn-sm" data-register-call="${escapeHtml(call.id)}">📣 テーブル ${call.table} ・ ${formatTime(call.createdAt)}　対応済み</button>`).join("")}</div></div>` : "";
+  root.innerHTML = calls.length ? `<div class="panel-card"><strong>スタッフ呼び出し・お会計のお知らせ</strong><div class="d-flex flex-wrap gap-2 mt-2">${calls.map((call) => `<button class="btn btn-warning btn-sm" data-register-call="${escapeHtml(call.id)}">📣 テーブル ${call.table} ・ <span>${call.type === "checkout" ? "お会計に向かいます" : "スタッフ呼び出し"}</span> ・ ${formatTime(call.createdAt)}　対応済み</button>`).join("")}</div></div>` : "";
   root.querySelectorAll("[data-register-call]").forEach((button) => button.addEventListener("click", () => updateState((current) => {
     const call = current.calls.find((entry) => entry.id === button.dataset.registerCall);
     if (call) call.resolved = true;

@@ -14,6 +14,8 @@
 .print-ticket-page{break-after:page}
 .print-ticket-page:last-child{break-after:auto}
 .receipt-layout{width:var(--receipt-width,80mm)}
+.qr-sign .qr-table-number{font-size:3rem;font-weight:800}.qr-tile .qr-table-number{font-size:1.75rem;font-weight:800}.qr-checkout-note{font-weight:700;line-height:1.5}.qr-sign .qr-checkout-note{max-width:28em;margin:16px auto}.qr-tile .qr-checkout-note{font-size:.85rem;margin:12px 0 0}
+@media print{.qr-sign .qr-table-number{font-size:30pt!important}.qr-tile .qr-table-number{font-size:20pt!important}.qr-checkout-note{color:#000!important}.qr-tile .qr-checkout-note{font-size:10pt!important}}
 @media(max-width:700px){.qr-sign .qr-code canvas,.qr-sign .qr-code img{width:240px!important;height:240px!important}}
 @media print{.qr-tile .qr-code canvas,.qr-tile .qr-code img{width:28mm!important;height:28mm!important}.qr-sign .qr-code canvas,.qr-sign .qr-code img{width:65mm!important;height:65mm!important}}
 .register-daily-grid{grid-template-columns:repeat(4,minmax(0,1fr))}

@@ -68,6 +68,138 @@ test("orders are submitted per table and still respect ordering pauses", () => {
   assert.equal("sessionId" in state.orders[0], false);
 });
 
+test("checkout notice persists once, works for served and unserved orders, and resets after payment", async () => {
+  const source = read("customer.js");
+  const code = source.slice(source.indexOf("function renderCheckoutRequest"), source.indexOf("\nfunction orderNumber"));
+  const elements = Object.fromEntries(["#checkout-request", "#request-checkout", "#checkout-request-feedback"].map((id) => [id, {}]));
+  let handler, resolveSave, rejectSave, writes = 0;
+  const alerts = [];
+  elements["#request-checkout"].addEventListener = (event, callback) => { handler = callback; };
+  const state = {
+    orders: [
+      { id: "served", table: 6, status: "served" },
+      { id: "pending", table: 6, status: "pending" },
+      { id: "other", table: 2, status: "served" }
+    ],
+    calls: []
+  };
+  const context = vm.createContext({
+    Date, Error, table: 6, getState: () => state, makeId: () => `call-${writes}`,
+    document: { querySelector: (id) => elements[id] },
+    window: { alert: (message) => alerts.push(message) }, console: { error() {} },
+    updateStateAsync: async (mutator) => {
+      writes++;
+      await new Promise((resolve, reject) => { resolveSave = resolve; rejectSave = reject; });
+      mutator(state);
+    }
+  });
+  vm.runInContext(`let checkoutRequestInProgress = false;\n${code}`, context);
+  context.renderCheckoutRequest();
+  assert.equal(elements["#request-checkout"].disabled, false);
+  const pending = handler();
+  await handler();
+  assert.equal(writes, 1);
+  assert.equal(elements["#request-checkout"].disabled, true);
+  assert.equal(elements["#checkout-request-feedback"].textContent, "");
+  assert.equal(state.calls.length, 0);
+  resolveSave();
+  await pending;
+  assert.equal(state.calls.length, 1);
+  assert.equal(state.calls[0].type, "checkout");
+  assert.deepEqual(Array.from(state.calls[0].orderIds), ["served", "pending"]);
+  assert.equal(state.orders.some((order) => order.paid), false);
+  assert.match(elements["#checkout-request-feedback"].textContent, /お知らせしました/);
+  state.calls[0].resolved = true;
+  context.renderCheckoutRequest();
+  assert.equal(elements["#request-checkout"].disabled, true);
+  const duplicate = handler();
+  resolveSave();
+  await duplicate;
+  assert.equal(state.calls.length, 1);
+  state.orders.filter((order) => order.table === 6).forEach((order) => { order.paid = true; });
+  context.renderCheckoutRequest();
+  assert.equal(elements["#checkout-request"].hidden, true);
+  state.orders.push({ id: "new-order", table: 6, status: "served" });
+  context.renderCheckoutRequest();
+  assert.equal(elements["#request-checkout"].disabled, false);
+  const failed = handler();
+  rejectSave(new Error("save failed"));
+  await failed;
+  assert.equal(alerts.at(-1), "save failed");
+  assert.equal(elements["#request-checkout"].disabled, false);
+  assert.equal(elements["#checkout-request-feedback"].textContent, "");
+  const stale = handler();
+  state.orders.at(-1).paid = true;
+  resolveSave();
+  await stale;
+  assert.match(alerts.at(-1), /注文状態が更新/);
+  assert.equal(state.calls.length, 1);
+  state.orders.push({ id: "next-order", table: 6, status: "served" });
+  const next = handler();
+  resolveSave();
+  await next;
+  assert.equal(state.calls.length, 2);
+  assert.deepEqual(Array.from(state.calls[0].orderIds), ["next-order"]);
+});
+
+test("kitchen and register show checkout notices separately from ordinary staff calls", () => {
+  const calls = [
+    { id: "checkout", table: 6, type: "checkout", createdAt: "now", resolved: false },
+    { id: "staff", table: 2, createdAt: "now", resolved: false },
+    { id: "resolved", table: 3, type: "checkout", resolved: true }
+  ];
+  const registerRoot = { querySelectorAll: () => [] };
+  const kitchenRoot = { querySelectorAll: () => [] };
+  const registerSource = read("register.js");
+  const kitchenSource = read("kitchen.js");
+  const context = vm.createContext({
+    getState: () => ({ calls }), escapeHtml: (value) => value, formatTime: () => "12:00",
+    document: {
+      querySelector: (selector) => selector === "#register-calls" ? registerRoot
+        : selector === ".staff-content" ? { insertBefore() {} } : null,
+      createElement: () => kitchenRoot
+    }
+  });
+  vm.runInContext(registerSource.slice(registerSource.indexOf("function renderCalls"), registerSource.indexOf("\nfunction renderTables")), context);
+  context.renderCalls({ calls });
+  assert.match(registerRoot.innerHTML, /テーブル 6 ・ <span>お会計に向かいます/);
+  assert.match(registerRoot.innerHTML, /テーブル 2 ・ <span>スタッフ呼び出し/);
+  assert.doesNotMatch(registerRoot.innerHTML, /data-register-call="resolved"/);
+  vm.runInContext(kitchenSource.slice(kitchenSource.indexOf("function renderCalls"), kitchenSource.indexOf("\nfunction ", kitchenSource.indexOf("function renderCalls") + 1)), context);
+  context.renderCalls(calls.filter((call) => !call.resolved));
+  assert.match(kitchenRoot.innerHTML, /テーブル 6 ・ <span>お会計に向かいます/);
+  assert.match(kitchenRoot.innerHTML, /data-voice-call="2"/);
+  assert.doesNotMatch(kitchenRoot.innerHTML, /data-voice-call="6"/);
+});
+
+test("printed QR cards show table numbers and carry-to-register instructions with matching customer URLs", () => {
+  const source = read("qr.js").replace(/^import .+\n/, "");
+  for (const mode of ["single", "sheet"]) {
+    const values = [];
+    const canvas = (table) => ({ dataset: { qrTable: String(table) }, replaceWith() {} });
+    const single = {};
+    const sheet = { prepend() {}, querySelectorAll: () => Array.from({ length: 40 }, (_, index) => canvas(index + 1)) };
+    const context = vm.createContext({
+      URL, URLSearchParams, escapeHtml: (value) => value,
+      location: { href: "https://example.test/table1-40-qr.html?table=6", search: "?table=6" },
+      document: {
+        querySelector: (selector) => selector === "#qr-sign" ? (mode === "single" ? single : null)
+          : selector === "#qr-sheet" ? (mode === "sheet" ? sheet : null) : canvas(6),
+        createElement: () => ({})
+      },
+      window: { QRCode: Object.assign(function (container, options) { values.push(options.text); }, { CorrectLevel: { M: 0 } }) }
+    });
+    vm.runInContext(source, context);
+    const html = mode === "single" ? single.innerHTML : sheet.innerHTML;
+    assert.match(html, /class="qr-table-number">テーブル 6</);
+    assert.match(html, /お会計の際は、この用紙をレジへお持ちください。/);
+    assert.equal(values.length, mode === "single" ? 1 : 40);
+    values.forEach((value, index) => {
+      assert.equal(value, `https://example.test/index.html?table=${mode === "single" ? 6 : index + 1}`);
+    });
+  }
+});
+
 test("kitchen deduplicates committed payments, waits ten seconds, and speaks twice one second apart", () => {
   const source = read("kitchen.js");
   const audio = source.slice(source.indexOf("function playNextPaymentNotification"), source.indexOf("\nrender();\nwindow.setInterval"));
@@ -125,7 +257,10 @@ test("checkout waits for persistence, blocks repeat clicks, and reports save fai
       receipts: {},
       orders: [{ id: "order", table: 3, items: [] }],
       payments: [],
-      calls: []
+      calls: [
+        { id: "checkout", table: 3, type: "checkout", resolved: false },
+        { id: "other", table: 2, type: "checkout", resolved: false }
+      ]
     };
     const button = { disabled: false, addEventListener: (event, callback) => { handler = callback; } };
     const context = vm.createContext({
@@ -146,6 +281,8 @@ test("checkout waits for persistence, blocks repeat clicks, and reports save fai
     await pending;
     assert.equal(state.payments.length, fail ? 0 : 1);
     assert.equal(state.orders[0].paid === true, !fail);
+    assert.equal(state.calls[0].resolved, !fail);
+    assert.equal(state.calls[1].resolved, false);
     if (!fail) assert.equal("sessionId" in state.payments[0], false);
     assert.equal(receipts.length, fail ? 0 : 1);
     assert.equal(alerts.length, fail ? 1 : 0);

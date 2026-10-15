@@ -19,6 +19,12 @@
     <section class="order-status-wrap">
       <div class="section-heading"><div><span class="eyebrow">YOUR TABLE</span><h2>ご注文状況</h2></div></div>
       <div id="table-orders" class="table-orders"></div>
+      <div id="checkout-request" class="mt-3" hidden>
+        <p>お帰りの際、お会計へ向かう前に押してください。</p>
+        <p>テーブルのQRコード用紙をレジへお持ちください。</p>
+        <button id="request-checkout" class="btn btn-primary btn-lg">お会計に行きます</button>
+        <p id="checkout-request-feedback" class="feedback mt-2" role="status" aria-live="polite"></p>
+      </div>
     </section>
     <section class="receipt-request">
       <div><span class="eyebrow">RECEIPT</span><h2>領収書が必要ですか？</h2><p>宛名を登録すると、お会計時に領収書へ反映されます。</p></div>

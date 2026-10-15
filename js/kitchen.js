@@ -93,7 +93,7 @@ function renderCalls(calls) {
   const container = document.createElement("section");
   container.id = "staff-calls";
   container.className = "panel-card mb-3";
-  container.innerHTML = `<strong>スタッフ呼び出し</strong><div class="d-flex flex-column gap-2 mt-2">${calls.map((call) => `<div class="d-flex flex-wrap gap-2"><button class="btn btn-warning btn-sm" data-resolve-call="${escapeHtml(call.id)}">テーブル ${call.table} ・ ${formatTime(call.createdAt)}　対応済み</button><button class="btn btn-outline-dark btn-sm" data-voice-call="${call.table}">📣 カウンターへ呼ぶ（声）</button></div>`).join("")}</div>`;
+  container.innerHTML = `<strong>スタッフ呼び出し・お会計のお知らせ</strong><div class="d-flex flex-column gap-2 mt-2">${calls.map((call) => `<div class="d-flex flex-wrap gap-2"><button class="btn btn-warning btn-sm" data-resolve-call="${escapeHtml(call.id)}">テーブル ${call.table} ・ <span>${call.type === "checkout" ? "お会計に向かいます" : "スタッフ呼び出し"}</span> ・ ${formatTime(call.createdAt)}　対応済み</button>${call.type === "checkout" ? "" : `<button class="btn btn-outline-dark btn-sm" data-voice-call="${call.table}">📣 カウンターへ呼ぶ（声）</button>`}</div>`).join("")}</div>`;
   document.querySelector(".staff-content").insertBefore(container, document.querySelector(".kds-toolbar"));
   container.querySelectorAll("[data-voice-call]").forEach((button) => button.addEventListener("click", () => {
     const table = Number(button.dataset.voiceCall);

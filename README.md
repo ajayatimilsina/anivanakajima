@@ -83,6 +83,8 @@ Demo flow
 Customer: open a URL with a table number, add menu items, and send the order. A kitchen ticket prints and the order appears in Register (checkout).
 Kitchen: start cooking, then mark the ticket ready.
 Customer: the status banner updates to Preparing, then Served.
+Customer: before leaving for the register, press "お会計に行きます" below the order list. The button is available while there are unpaid orders, regardless of serving status. A table-specific checkout notice appears in Kitchen and Register; this does not mark orders as paid. Repeat notifications are suppressed for the same unpaid orders, including after staff acknowledge the notice. Checkout clears the notice, and new unpaid orders allow another request. Cross-device notices require working Firebase sync.
+Print a single-table QR card or the tables 1-40 sheet and place the cards on the corresponding tables. Customers bring their table's QR card to the register when paying. Staff select the large table number printed on the card in Register and complete checkout; no QR scanner is required. The QR itself still opens the customer ordering page, not a staff page.
 Register: select the table, apply a discount, choose a payment method, close the table, and print the receipt.
 
 

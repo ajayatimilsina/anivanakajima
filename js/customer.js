@@ -5,6 +5,7 @@ const requestedTable = Number(params.get("table") || 1);
 const table = Number.isInteger(requestedTable) && requestedTable >= 1 && requestedTable <= 40 ? requestedTable : 1;
 const tableLabel = `テーブル ${table}`;
 const cart = [];
+let checkoutRequestInProgress = false;
 let selectedCategory = "すべて";
 let modalItemId = null;
 let itemModal;
@@ -173,6 +174,7 @@ function statusLabel(status) {
 }
 
 function renderTableOrders(state = getState()) {
+  renderCheckoutRequest(state);
   const ownOrders = state.orders.filter((order) => order.table === table && !order.paid);
   const announcement = state.announcements.filter((entry) => !entry.table || entry.table === table).at(-1);
   const root = document.querySelector("#table-orders");
@@ -185,6 +187,46 @@ function renderTableOrders(state = getState()) {
   }
   root.innerHTML = ownOrders.length ? readyBanner + ownOrders.map(orderCard).join("") : `<div class="no-orders">まだご注文はありません。メニューを選んでご注文ください。</div>`;
 }
+
+function renderCheckoutRequest(state = getState()) {
+  const orders = state.orders.filter((order) => order.table === table && !order.paid);
+  const requested = state.calls.some((call) => call.table === table && call.type === "checkout"
+    && call.orderIds?.some((id) => orders.some((order) => order.id === id)));
+  document.querySelector("#checkout-request").hidden = !orders.length;
+  const button = document.querySelector("#request-checkout");
+  button.disabled = checkoutRequestInProgress || requested || !orders.length;
+  button.textContent = requested ? "お会計の通知済み" : checkoutRequestInProgress ? "送信中…" : "お会計に行きます";
+  document.querySelector("#checkout-request-feedback").textContent = requested
+    ? "キッチンとレジにお知らせしました。テーブルのQRコード用紙をレジへお持ちください。" : "";
+}
+
+document.querySelector("#request-checkout").addEventListener("click", async () => {
+  if (checkoutRequestInProgress) return;
+  const orderIds = getState().orders.filter((order) => order.table === table && !order.paid).map((order) => order.id);
+  if (!orderIds.length) {
+    renderCheckoutRequest();
+    return;
+  }
+  checkoutRequestInProgress = true;
+  renderCheckoutRequest();
+  const request = { id: makeId("call"), table, type: "checkout", orderIds, createdAt: new Date().toISOString(), resolved: false };
+  try {
+    await updateStateAsync((state) => {
+      if (orderIds.some((id) => !state.orders.some((order) => order.id === id && order.table === table && !order.paid))) {
+        throw new Error("注文状態が更新されました。画面を確認して再度お試しください。");
+      }
+      const requested = state.calls.some((call) => call.table === table && call.type === "checkout"
+        && call.orderIds?.some((id) => orderIds.includes(id)));
+      if (!requested) state.calls.unshift(request);
+    });
+  } catch (error) {
+    console.error("Could not request checkout.", error);
+    window.alert(error instanceof Error ? error.message : "お会計の通知を送信できませんでした。通信状況を確認してください。");
+  } finally {
+    checkoutRequestInProgress = false;
+    renderCheckoutRequest();
+  }
+});
 
 function orderNumber(order) {
   return Date.parse(order.createdAt);
